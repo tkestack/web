@@ -12,13 +12,13 @@ on Linux.
 1. Clone this repo:
 
     ```bash
-    git clone https://github.com/my/example.git
+    git clone --recurse-submodules --depth 1 https://github.com/tkestack/web.git
     ```
 
 2. Build the docker image and run 
 
    ```bash
-   git submodule update --init --recursive && docker-compose up --build
+   docker-compose up --build
    ```
 
 3. Verify that the service is working. 
