@@ -29,7 +29,7 @@ imaging:
 languages:
   zh:
     title: Tkestack
-    description: 生产级别的容器编排系统
+    description: 生产级别多集群管理系统
     languageName: 中文 Chinese
     weight: 2
     contentDir: content/zh
