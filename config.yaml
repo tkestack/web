@@ -1,0 +1,104 @@
+baseURL: /
+title: TKEStack
+enableRobotsTXT: true
+theme:
+  - docsy
+enableGitInfo: true
+contentDir: content/zh
+defaultContentLanguage: zh
+defaultContentLanguageInSubdir: false
+enableMissingTranslationPlaceholders: true
+disableKinds:
+  - taxonomy
+  - taxonomyTerm
+pygmentsCodeFences: true
+pygmentsUseClasses: false
+pygmentsUseClassic: false
+pygmentsStyle: tango
+permalinks:
+  blog: "/:section/:year/:month/:day/:slug/"
+blackfriday:
+  plainIDAnchors: true
+  hrefTargetBlank: true
+  angledQuotes: false
+  latexDashes: true
+imaging:
+  resampleFilter: CatmullRom
+  quality: 75
+  anchor: smart
+languages:
+  zh:
+    title: Tkestack
+    description: 生产级别的容器编排系统
+    languageName: 中文 Chinese
+    weight: 2
+    contentDir: content/zh
+    languagedirection: ltr
+    params:
+      time_format_blog: 2006.01.02
+      language_alternatives:
+        - en
+markup:
+  goldmark:
+    renderer:
+      unsafe: true
+  highlight:
+    style: tango
+outputs:
+  section:
+    - HTML
+    - print
+params:
+  copyright: The TKEStack Authors
+  version_menu: Releases
+  archived_version: false
+  version: "0.0"
+  github_repo: "https://github.com/tkestack/tke"
+  algolia_docsearch: false
+  offlineSearch: false
+  prism_syntax_highlighting: false
+  ui:
+    sidebar_menu_compact: false
+    breadcrumb_disable: false
+    sidebar_search_disable: false
+    navbar_logo: false
+    footer_about_disable: false
+    feedback:
+      enable: true
+      "yes": >-
+        Glad to hear it! Please <a
+        href="https://github.com/USERNAME/REPOSITORY/issues/new">tell us how we
+        can improve</a>.
+      "no": >-
+        Sorry to hear that. Please <a
+        href="https://github.com/USERNAME/REPOSITORY/issues/new">tell us how we
+        can improve</a>.
+    readingtime:
+      enable: false
+  links:
+    developer:
+      - name: GitHub
+        url: "https://github.com/tkestack/tke"
+        icon: fab fa-github
+        desc: Development takes place here!
+
+# Site menus
+
+menu:
+  main:
+    # - name: About
+    #   url: /about/
+    #   weight: 1
+    # - name: Docs
+    #   url: /docs/
+    #   identifier: docs
+    #   weight: 2
+    # - name: Showcase
+    #   url: /showcase/
+    #   weight: 3
+    - name: Blog
+      url: /blog/
+      weight: 4
+    # - name: Community
+    #   url: /community/
+    #   weight: 5
