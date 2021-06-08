@@ -53,7 +53,7 @@ params:
   version_menu: Releases
   archived_version: false
   version: "0.0"
-  github_repo: "https://github.com/tkestack/tke"
+  github_repo: "https://github.com/tkestack/web"
   algolia_docsearch: false
   offlineSearch: false
   prism_syntax_highlighting: false
@@ -62,17 +62,17 @@ params:
     breadcrumb_disable: false
     sidebar_search_disable: false
     navbar_logo: false
-    footer_about_disable: false
-    feedback:
-      enable: true
-      "yes": >-
-        Glad to hear it! Please <a
-        href="https://github.com/USERNAME/REPOSITORY/issues/new">tell us how we
-        can improve</a>.
-      "no": >-
-        Sorry to hear that. Please <a
-        href="https://github.com/USERNAME/REPOSITORY/issues/new">tell us how we
-        can improve</a>.
+    footer_about_disable: ture
+    # feedback:
+    #   enable: true
+    #   "yes": >-
+    #     Glad to hear it! Please <a
+    #     href="https://github.com/USERNAME/REPOSITORY/issues/new">tell us how we
+    #     can improve</a>.
+    #   "no": >-
+    #     Sorry to hear that. Please <a
+    #     href="https://github.com/USERNAME/REPOSITORY/issues/new">tell us how we
+    #     can improve</a>.
     readingtime:
       enable: false
   links:
