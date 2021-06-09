@@ -38,3 +38,6 @@ docker-compose rm
 For more information see the [Docker Compose
 documentation](https://docs.docker.com/compose/gettingstarted/).
 
+## Contributing Guide
+
+Please check [Adding docs and blog posts](https://www.docsy.dev/docs/adding-content/content/#adding-docs-and-blog-posts) and our [first post PR](https://github.com/tkestack/web/pull/9/files).
