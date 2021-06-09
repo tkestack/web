@@ -1,5 +1,5 @@
 ---
-title: "Docsy Blog"
+title: "TKEStack Blog"
 linkTitle: "Blog"
 ---
 
