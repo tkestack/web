@@ -4,8 +4,8 @@ enableRobotsTXT: true
 theme:
   - docsy
 enableGitInfo: true
-contentDir: content/zh
-defaultContentLanguage: zh
+contentDir: content/en
+defaultContentLanguage: en
 defaultContentLanguageInSubdir: false
 enableMissingTranslationPlaceholders: true
 disableKinds:
@@ -27,6 +27,12 @@ imaging:
   quality: 75
   anchor: smart
 languages:
+  en:
+    title: Tkestack
+    description: Production-Grade Multi-Cluster Management System
+    languageName: English
+    weight: 1
+    contentDir: content/en
   zh:
     title: Tkestack
     description: 生产级别多集群管理系统
