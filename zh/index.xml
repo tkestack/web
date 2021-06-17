@@ -49,12 +49,12 @@
 &lt;h3 id="多集群管理">多集群管理&lt;/h3>
 &lt;p>支持新建独立集群或纳管不同基础设施上的已有 Kubernetes 集群，通过页面或命令行集中管理多个集群，实现了混合云场景下的多集群统一管理能力。只需提供需要管理集群的 api 地址，token 和 ca 证书，TKEStack 就可以纳管该集群。纳管操作不会污染导入的集群，被纳管集群不会增加额外的负载或配置。统一一致的用户权限及业务管理等功能帮助用户在集群间灵活切换，方便的部署和管理多集群应用。&lt;/p>
 &lt;img alt="多集群管理" width="100%" src="mutil_cluster_management.png">
-&lt;p>更多信息请参考&lt;a href="https://github.com/tkestack/docs/blob/master/products/platform/cluster.md">集群管理&lt;/a>&lt;/p>
+&lt;p>更多信息请参考&lt;a href="https://tkestack.github.io/docs/user-guide/platform-console/cluster-mgmt.html">集群管理&lt;/a>&lt;/p>
 &lt;h3 id="多租户管理">多租户管理&lt;/h3>
 &lt;p>支持多租户管理和租户间隔离，不仅仅局限于账号，而是包括集群、命名空间、业务、镜像仓库等等，满足大中型规模企业管理的需求。并且在租户层次之下，拥有业务的概念，业务可以横跨集群，为用户提供统一的配额管理、命名空间、业务配额以及镜像仓库和应用商店等管理能力，方便用户在多集群场景下编排业务应用。&lt;/p>
 &lt;img alt="多租户管理" width="100%" src="mutil_tenant_management.png">
 &lt;p>TKEStack提供统一和开放的认证授权管理，通过扩充 kubernetes 的 authz 和 authn 的 webhook，实现所有集群无需单独配置 RBAC，为上层提供统一的可跨集群的资源授权。TKEStack自身的认证和授权体系是完整的 K8S Style API 以及 oidc 认证协议支持，可以很容易的由第三方集成商或开发者集成在自身的产品中，实现和 TKEStack 捆绑服务。企业级用户可以方便的将已有的账户体系或组织架构映射到 TKEStack 平台中，从而节省容器平台对接的工作量，专注于自身高价值业务的开发。&lt;/p>
-&lt;p>更多信息请参考&lt;a href="https://github.com/tkestack/docs/blob/master/products/platform/access.md">访问管理&lt;/a>&lt;/p>
+&lt;p>更多信息请参考&lt;a href="https://tkestack.github.io/docs/user-guide/platform-console/access-mgmt/">访问管理&lt;/a>&lt;/p>
 &lt;h3 id="运维友好的管理平台">运维友好的管理平台&lt;/h3>
 &lt;p>TKEStack 致力于打造一个运维友好的管理平台，帮助运维人员从繁杂的劳动中解放出来。TKEStack 提供完整详细的监控及日志服务，粒度精细到对集群下每一个容器每一条日志都有监控和记录。并且提供智能化的安装工具、巡检工具，帮助运维人员对整个平台全程进行管理，提前发现风险点，提高系统的可靠性。&lt;/p>
 &lt;h4 id="快捷安装">快捷安装&lt;/h4>
@@ -77,7 +77,7 @@
 &lt;li>采集容器内文件日志 - 采集集群内指定 pod 内文件的日志，用户可以根据自己的需求，灵活的配置所需的容器和路径，采集到的日志信息将会以 JSON 格式输出到用户指定的消费端， 并会附加相关的 Kubernetes metadata，包括容器所属 pod 的 label 和 annotation 等信息。&lt;/li>
 &lt;li>采集主机内文件日志 - 采集集群内所有节点的指定主机路径的日志，log-collector 会采集集群内所有节点上满足指定路径规则的文件日志，以 JSON 格式输出到用户指定的输出端， 并会附加用户指定的 metadata，包括日志来源文件的路径和用户自定义的 metadata。&lt;/li>
 &lt;/ul>
-&lt;p>更多日志信息请参考&lt;a href="https://github.com/tkestack/docs/blob/master/products/business-control-pannel/application/log.md">日志管理&lt;/a>&lt;/p>
+&lt;p>更多日志信息请参考&lt;a href="https://tkestack.github.io/docs/user-guide/platform-console/operation-mgmt/log-collect.html">日志管理&lt;/a>&lt;/p>
 &lt;h4 id="平台巡检">平台巡检&lt;/h4>
 &lt;p>巡检工具 kube-javis，通过 plugin 插件的方式灵活配置和扩展，多维度的检查 TKEStack 平台下集群的健康状况，支持集成到 TKEStack 平台中，定期运行并输出诊断结果和修复建议。&lt;/p>
 &lt;p>更多详细信息请关注&lt;a href="https://github.com/tkestack/kube-jarvis">kube-javis&lt;/a>&lt;/p>
@@ -91,7 +91,7 @@
 &lt;li>CSIOperator - 负责 CSI 相关组件的部署与维护，帮助用户在集群中使用存储。&lt;/li>
 &lt;li>IPAM - 通过 IPAM 扩展组件安装，扩展了 K8S 调度插件，实现 Float IP 的配置和管理，满足复杂应用容器化的特殊需求。&lt;/li>
 &lt;/ul>
-&lt;p>更多详情请参考&lt;a href="https://github.com/tkestack/docs/blob/master/products/platform/extender.md">扩展组件&lt;/a>&lt;/p>
+&lt;p>更多详情请参考&lt;a href="https://tkestack.github.io/docs/key-features/">扩展组件&lt;/a>&lt;/p>
 &lt;h2 id="总结">总结&lt;/h2>
 &lt;p>随着2020年3月国家发改委进一步明确了包括以云计算等为代表的新技术基础设施纳入“新基建”的范围，国内云计算市场将迎来一波建设的热潮。尤其在私有云领域，传统行业企业基本开始了业务的云迁移，但其应用系统的弹性、自动化运维管理能力以及 Devops 和持续交付的能力仍在不断的探索和尝试，迫切的需要一套成熟的产品平台和生态体系，帮助企业完成云原生转型。&lt;/p>
 &lt;p>开源TKEStack的推出，将推动企业业务向云原生的转型，提供完善的容器产品功能，打造运维友好的管理平台，减少用户繁复的劳动，提高工作效率。完善的API和租户管理能力，方便用户将已有的账户体系或组织架构映射到TKEStack平台中，节省平台业务对接的工作量。并且良好的扩展能力使得用户能够基于 TKEStack 适配本地基础设施，扩展业务所需的各种能力。&lt;/p>
