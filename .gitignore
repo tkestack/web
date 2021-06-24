@@ -4,3 +4,9 @@ resources/
 node_modules/
 tech-doc-hugo
 
+# ide
+.vscode/
+.idea/
+
+.DS_Store
+

@@ -1,38 +1,36 @@
 ---
-title: "Overview"
-linkTitle: "Overview"
+title: "简介"
+linkTitle: "简介"
 weight: 1
 description: >
-  Here's where your user finds out if your project is for them.
+  Tke stack 简介.
 ---
 
-{{% pageinfo %}}
-This is a placeholder page that shows you how to use this template site.
-{{% /pageinfo %}}
+![](https://avatars0.githubusercontent.com/u/57258287?s=200&v=4)
 
+![TKEStack Logo](https://github.com/tkestack/tke/workflows/build/badge.svg?branch=master) ![build-web](https://github.com/tkestack/tke/workflows/build-web/badge.svg) [![Go Report Card](https://goreportcard.com/badge/tkestack.io/tke)](https://goreportcard.com/report/tkestack.io/tke) [![Release](https://img.shields.io/github/release/tkestack/tke.svg?style=flat-square)](https://github.com/tkestack/tke/releases)
 
-The Overview is where your users find out about your project. Depending on the size of your docset, you can have a separate overview page (like this one) or put your overview contents in the Documentation landing page (like in the Docsy User Guide). 
+> 在线文档地址：[https://tkestack.github.io/docs/](https://tkestack.github.io/docs/)
 
-Try answering these questions for your user in this page:
+_**TKEStack**_ 是一个开源项目，为在生产环境中部署容器的组织提供一个**统一的容器管理平台**。 _**TKEStack**_ 可以简化部署和使用 Kubernetes，满足 IT 要求，并增强 DevOps 团队的能力。
 
-## What is it?
+## 特点
 
-Introduce your project, including what it does or lets you do, why you would use it, and its primary goal (and how it achieves it). This should be similar to your README description, though you can go into a little more detail here if you want.
-
-## Why do I want it?
-
-Help your user know if your project will help them. Useful information can include: 
-
-* **What is it good for?**: What types of problems does your project solve? What are the benefits of using it?
-
-* **What is it not good for?**: For example, point out situations that might intuitively seem suited for your project, but aren't for some reason. Also mention known limitations, scaling issues, or anything else that might let your users know if the project is not for them.
-
-* **What is it *not yet* good for?**: Highlight any useful features that are coming soon.
-
-## Where should I go next?
-
-Give your users next steps from the Overview. For example:
-
-* [Getting Started](/docs/getting-started/): Get started with $project
-* [Examples](/docs/examples/): Check out some example code!
+* **统一集群管理**
+  * 提供 Web 控制台和命令行客户端，用于集中管理多个 Kubernetes 集群
+  * 可与现有的身份验证机制集成，包括 LDAP，Active Directory，front proxy 和 public OAuth providers（例如GitHub）
+  * 统一授权管理，不仅在集群管理级别，甚至在Kubernetes资源级别
+  * 多租户支持，包括团队和用户对容器、构建和网络通信的隔离
+* **应用程序工作负载管理**
+  * 提供直观的UI界面，以支持可视化、YAML导入、其他资源创建和编辑方法，使用户无需预先学习所有Kubernetes概念即可运行容器
+  * 抽象的项目级资源容器，以支持跨多个集群的多个名称空间管理和部署应用程序
+* **运维管理**
+  * 集成的系统监控和应用程序监控
+  * 支持对接外部存储，以实现持久化Kubernetes事件和审计日志
+  * 限制，跟踪和管理平台上的开发人员和团队
+* **插件支持和管理**
+  * Authentication identity provider 插件
+  * Authorization provider 插件
+  * 事件持久化存储插件
+  * 系统和应用程序日志持久化存储插件
 
