@@ -10,7 +10,7 @@ description: >
 
 ![TKEStack Logo](https://github.com/tkestack/tke/workflows/build/badge.svg?branch=master) ![build-web](https://github.com/tkestack/tke/workflows/build-web/badge.svg) [![Go Report Card](https://goreportcard.com/badge/tkestack.io/tke)](https://goreportcard.com/report/tkestack.io/tke) [![Release](https://img.shields.io/github/release/tkestack/tke.svg?style=flat-square)](https://github.com/tkestack/tke/releases)
 
-> 在线文档地址：[https://tkestack.github.io/docs/](https://tkestack.github.io/docs/)
+> 在线文档地址：[https://tkestack.github.io/web/zh/docs/](https://tkestack.github.io/web/zh/docs/)
 
 _**TKEStack**_ 是一个开源项目，为在生产环境中部署容器的组织提供一个**统一的容器管理平台**。 _**TKEStack**_ 可以简化部署和使用 Kubernetes，满足 IT 要求，并增强 DevOps 团队的能力。
 
