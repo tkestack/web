@@ -4,6 +4,7 @@ linkTitle: "产品部署架构"
 date: 2017-01-05
 description: >
   产品部署架构描述
+weight: 1
 ---
 
 ## 总体架构
@@ -12,7 +13,7 @@ TKEStack 产品架构如下图所示：
 
 <!-- TODO： need update -->
 
-![](/images/tkestackhighlevelarchitecture-2x.png)
+![](./images/tkestackhighlevelarchitecture-2x.png)
 
 ## 架构说明
 
