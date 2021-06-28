@@ -1,3 +1,12 @@
+---
+title: "安装步骤"
+linkTitle: "安装步骤"
+date: 2017-01-05
+description: >
+  tke stack 具体安装步骤，注意事项
+weight: 3
+---
+
 # 安装步骤
 
 ## 安装步骤
