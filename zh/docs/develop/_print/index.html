@@ -1,0 +1,100 @@
+<!doctype html><html lang=zh class=no-js><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1,shrink-to-fit=no"><meta name=generator content="Hugo 0.83.1"><link rel=canonical type=text/html href=/web/zh/docs/develop/><meta name=ROBOTS content="NOINDEX, NOFOLLOW"><link rel="shortcut icon" href=/web/favicons/favicon.ico><link rel=apple-touch-icon href=/web/favicons/apple-touch-icon-180x180.png sizes=180x180><link rel=icon type=image/png href=/web/favicons/favicon-16x16.png sizes=16x16><link rel=icon type=image/png href=/web/favicons/favicon-32x32.png sizes=32x32><link rel=icon type=image/png href=/web/favicons/android-36x36.png sizes=36x36><link rel=icon type=image/png href=/web/favicons/android-48x48.png sizes=48x48><link rel=icon type=image/png href=/web/favicons/android-72x72.png sizes=72x72><link rel=icon type=image/png href=/web/favicons/android-96x96.png sizes=96x96><link rel=icon type=image/png href=/web/favicons/android-144x144.png sizes=144x144><link rel=icon type=image/png href=/web/favicons/android-192x192.png sizes=192x192><title>开发指引 | Tkestack</title><meta name=description content="生产级别多集群管理系统"><meta property="og:title" content="开发指引"><meta property="og:description" content="开发指引
+"><meta property="og:type" content="website"><meta property="og:url" content="/web/zh/docs/develop/"><meta property="og:site_name" content="Tkestack"><meta itemprop=name content="开发指引"><meta itemprop=description content="开发指引
+"><meta name=twitter:card content="summary"><meta name=twitter:title content="开发指引"><meta name=twitter:description content="开发指引
+"><link rel=preload href=/web/scss/main.min.f3f5e11928ea652eef8f11ab959efa477bbd1a85923ff5e0245c83fe74bd312a.css as=style><link href=/web/scss/main.min.f3f5e11928ea652eef8f11ab959efa477bbd1a85923ff5e0245c83fe74bd312a.css rel=stylesheet integrity><script src=https://code.jquery.com/jquery-3.5.1.min.js integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0=" crossorigin=anonymous></script></head><body class=td-section><header><nav class="js-navbar-scroll navbar navbar-expand navbar-dark flex-column flex-md-row td-navbar"><a class=navbar-brand href=/web/zh/><span class=navbar-logo></span><span class="text-uppercase font-weight-bold">Tkestack</span></a><div class="td-navbar-nav-scroll ml-md-auto" id=main_navbar><ul class="navbar-nav mt-2 mt-lg-0"><li class="nav-item mr-4 mb-2 mb-lg-0"><a class=nav-link href=/web/zh/docs/><span>Docs</span></a></li><li class="nav-item mr-4 mb-2 mb-lg-0"><a class=nav-link href=/web/zh/blog/><span>Blog</span></a></li><li class="nav-item dropdown d-none d-lg-block"><a class="nav-link dropdown-toggle" href=# id=navbarDropdown role=button data-toggle=dropdown aria-haspopup=true aria-expanded=false>中文 Chinese</a><div class=dropdown-menu aria-labelledby=navbarDropdownMenuLink><a class=dropdown-item href=/web/>English</a></div></li></ul></div><div class="navbar-nav d-none d-lg-block"></div></nav></header><div class="container-fluid td-outer"><div class=td-main><div class="row flex-xl-nowrap"><div class="col-12 col-md-3 col-xl-2 td-sidebar d-print-none"></div><div class="d-none d-xl-block col-xl-2 td-toc d-print-none"></div><main class="col-12 col-md-9 col-xl-8 pl-md-5" role=main><div class=td-content><div class="pageinfo pageinfo-primary d-print-none"><p>这是本节的多页打印视图。
+<a href=# onclick="return print(),!1">点击此处打印</a>.</p><p><a href=/web/zh/docs/develop/>返回本页常规视图</a>.</p></div><h1 class=title>开发指引</h1><div class=lead>开发指引</div><ul><li>1: <a href=#pg-b5d18f6a5a5de4c1a4b8632ce9d76df1>API 使用指引</a></li></ul><div class=content></div></div><div class=td-content><h1 id=pg-b5d18f6a5a5de4c1a4b8632ce9d76df1>1 - API 使用指引</h1><div class=lead>API 使用指引</div><h2 id=1-调用方式>1. 调用方式</h2><h3 id=11-创建访问凭证>1.1. 创建访问凭证</h3><p>访问【平台管理】控制台，在左侧找到【组织资源】，选择【访问凭证】，新建一个访问凭证。</p><h3 id=12-访问-api>1.2. 访问 API</h3><p>TKEStack上各种资源的接口均以 Kubernetes 原生 API 的形式提供，所有接口使用统一的前缀: <code>http://console.tke.com:8080/platform</code>，请求中需要将上一步申请的访问凭证以<code>"Authorization: Bearer ${访问凭证}"</code>的形式放入 header。</p><p>以查询集群信息为例，使用的请求如下：</p><div class=highlight><pre style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-text data-lang=text>curl -H &#34;Authorization: Bearer xxxxxxx&#34; \
+&#34;http://console.tke.com:8080/platform/apis/platform.tkestack.io/v1/clusters&#34;
+</code></pre></div><h3 id=13-查看特定集群的-namespace>1.3. 查看特定集群的 Namespace</h3><p>查看集群所包含的 Namespace 需要传递 &ldquo;X-TKE-ClusterName: cls-xxx&rdquo; 的 header，cls-xxx 为特定集群 ID</p><div class=highlight><pre style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-text data-lang=text>curl -H &#34;Authorization: Bearer xxxxxxx&#34; \
+-H &#34;X-TKE-ClusterName: cls-xxx&#34; \
+&#34;http://console.tke.com:8080/platform/api/v1/namespaces&#34;
+</code></pre></div><h2 id=2-通过-api-创建应用>2. 通过 API 创建应用</h2><h3 id=21-非-tapp-应用deploymentstatefulsetdaemonset>2.1. 非 TApp 应用（deployment，statefulset，daemonset）</h3><div class=highlight><pre style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-text data-lang=text>curl &#39;http://console.tke.com:8080/platform/apis/apps/v1/namespaces/命名空间/工作负载类型/工作负载名称&#39; 
+
+-X PATCH
+
+-H &#39;Content-Type:application/strategic-merge-patch+json&#39; 
+
+-H &#39;X-TKE-ClusterName:所属集群&#39;
+
+-H &#39;Authorization: Bearer 访问凭证&#39;
+
+-d &#39;{&#34;spec&#34;:{&#34;template&#34;:{&#34;spec&#34;:{&#34;containers&#34;:[{&#34;name&#34;:&#34;容器名称&#34;,&#34;image&#34;:&#34;容器镜像&#34;}]}}}}&#39;
+</code></pre></div><p>工作负载类型： 选择需要更新的工作负载类型（deployment，statefulset， daemonset） 所属集群：填写所要更新容器所属集群。 命名空间：填写所要更新容器所属的命名空间。 工作负载名称：填写所要更新容器的工作负载名称。 容器名称：填写所要更新容器的名称。 访问凭证：填写访问该容器资源的访问凭证，可以在“tkestack-组织资源-访问凭证“中获取该信息（<strong>访问凭证有过期时间，如过期需要重新创建</strong>）。 容器镜像：填写所要更新的Docker镜像</p><h3 id=22-tapp>2.2. TApp</h3><p>TApp 是自研的应用类型，更新镜像需要两步，首先获取当前的容器 spec，调整镜像名后在调用更新接口</p><h4 id=221-获取tapp-spec>2.2.1. 获取tapp spec</h4><div class=highlight><pre style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-text data-lang=text>curl &#39;http://console.tke.com:8080/platform/apis/platform.tkestack.io/v1/clusters/所属集群/tapps?namespace=命名空间&amp;name=工作负载名称&#39;
+
+-X GET
+
+-H &#39;Authorization: Bearer 访问凭证&#39;
+</code></pre></div><p>返回值示例：</p><p><code>{"apiVersion":"apps.tkestack.io/v1","kind":"TApp","metadata":{"creationTimestamp":"2020-06-10T13:35:54Z","generation":8,"labels":{"k8s-app":"kevintest","qcloud-app":"kevintest"},"name":"kevintest","namespace":"default","resourceVersion":"13925571","selfLink":"/apis/apps.tkestack.io/v1/namespaces/default/tapps/kevintest","uid":"0269fb69-fa87-42f8-9c3a-e1f96cef40f1"},"spec":{"forceDeletePod":true,"replicas":1,"selector":{"matchLabels":{"k8s-app":"kevintest","qcloud-app":"kevintest"}},"template":{"metadata":{"creationTimestamp":null,"labels":{"k8s-app":"kevintest","qcloud-app":"kevintest","tapp_template_hash_key":"9636164821252331163","tapp_uniq_hash_key":"9518255606018677371"}},"spec":{"containers":[{"image":"mirrors.tencent.com/elsanli/devops-demo:62","imagePullPolicy":"Always","livenessProbe":{"failureThreshold":10,"periodSeconds":10,"successThreshold":1,"tcpSocket":{"port":8888},"timeoutSeconds":2},"name":"test","readinessProbe":{"failureThreshold":10,"periodSeconds":30,"successThreshold":1,"tcpSocket":{"port":8888},"timeoutSeconds":2},"resources":{"limits":{"cpu":"100m","memory":"48Mi"},"requests":{"cpu":"100m","memory":"25Mi"}}}],"restartPolicy":"Always"}},"updateStrategy":{}},"status":{"appStatus":"Running","observedGeneration":7,"readyReplicas":0,"replicas":1,"scaleLabelSelector":"k8s-app=kevintest,qcloud-app=kevintest","statuses":{"0":"Pending"}}}</code></p><h3 id=23-更新-tapp-镜像>2.3. 更新 TApp 镜像</h3><p>从上一步返回值中获取想要更新的整个容器的 spec，替换其中的 image 字段，这样做是为了避免将其他字段覆盖为空</p><div class=highlight><pre style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-text data-lang=text>curl &#39;&#39;http://console.tke.com:8080/platform/apis/platform.tkestack.io/v1/clusters/所属集群/tapps?namespace=命名空间&amp;name=工作负载名称&#39;
+
+-X PATCH
+
+-H &#39;Content-Type:application/merge-patch+json&#39; 
+
+-H &#39;X-TKE-ClusterName:所属集群&#39;
+
+-H &#39;Authorization: Bearer 访问凭证&#39;
+
+-d &#39;{&#34;spec&#34;:{&#34;template&#34;:{&#34;spec&#34;:{&#34;containers&#34;:[{&#34;name&#34;:&#34;容器名称&#34;,&#34;image&#34;:&#34;容器镜像&#34;,&#34;resources&#34;:{&#34;limits&#34;:{&#34;cpu&#34;:&#34;100m&#34;,&#34;memory&#34;:&#34;48Mi&#34;},&#34;requests&#34;:{&#34;cpu&#34;:&#34;100m&#34;,&#34;memory&#34;:&#34;25Mi&#34;}},&#34;livenessProbe&#34;:{&#34;tcpSocket&#34;:{&#34;port&#34;:8888},&#34;timeoutSeconds&#34;:2,&#34;periodSeconds&#34;:10,&#34;successThreshold&#34;:1,&#34;failureThreshold&#34;:10},&#34;readinessProbe&#34;:{&#34;tcpSocket&#34;:{&#34;port&#34;:8888},&#34;timeoutSeconds&#34;:2,&#34;periodSeconds&#34;:30,&#34;successThreshold&#34;:1,&#34;failureThreshold&#34;:10},&#34;imagePullPolicy&#34;:&#34;Always&#34;}]}},&#34;templates&#34;:null}}
+</code></pre></div><p>所属集群：填写所要更新容器所属集群。 命名空间：填写所要更新容器所属的命名空间。 工作负载名称：填写所要更新容器的工作负载名称。 容器名称：填写所要更新容器的名称。 访问凭证：填写访问该容器资源的访问凭证，可以在“tkestack-组织资源-访问凭证“中获取该信息（访问凭证有过期时间，如过期需要重新创建）。 容器镜像：填写所要更新的Docker镜像</p><h2 id=3-通过-api-增删集群节点>3. 通过 API 增删集群节点</h2><p>只能对独立集群的节点进行增删操作，不可操作导入集群。</p><h3 id=31-增加节点>3.1. 增加节点</h3><p>URL: <a href=http://console.tke.com:8080/platform/apis/platform.tkestack.io/v1/machines>http://console.tke.com:8080/platform/apis/platform.tkestack.io/v1/machines</a></p><p>Method: POST</p><p>Headers:</p><ol><li>Content-Type: application/json</li><li>Authorization: Bearer xxx</li></ol><p>按照以下命令的格式，将中文部分替换成实际值，发送请求。请求成功后，会返回被创建的Machine对象。</p><div class=highlight><pre style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-text data-lang=text>curl -X POST \
+&#34;http://console.tke.com:8080/platform/apis/platform.tkestack.io/v1/machines&#34; \
+-H &#34;Content-Type: application/json&#34; \
+-H &#34;Authorization: Bearer 你的访问凭证&#34; \
+-d &#39;
+{
+    &#34;kind&#34;: &#34;Machine&#34;,
+    &#34;apiVersion&#34;: &#34;platform.tkestack.io/v1&#34;,
+    &#34;metadata&#34;: {
+        &#34;generateName&#34;: &#34;mc-&#34;
+    },
+    &#34;spec&#34;: {
+        &#34;finalizers&#34;: [
+            &#34;machine&#34;
+        ],
+        &#34;tenantID&#34;: &#34;租户ID（联系平台管理员获取）&#34;,
+        &#34;clusterName&#34;: &#34;集群ID，可通过页面查看（不是集群名称）&#34;,
+        &#34;type&#34;: &#34;Baremetal&#34;,
+        &#34;ip&#34;: &#34;节点IP&#34;,
+        &#34;port&#34;: 节点SSH端口（int）,
+        &#34;username&#34;: &#34;root&#34;,
+        &#34;password&#34;: &#34;节点root密码(需经base64编码)&#34;
+    }
+}&#39;
+</code></pre></div><p>password base64编码：</p><p><code>echo -n $PASSWORD | base64</code> 假设password原文为123456，则生成的base64编码为MTIzNDU2</p><blockquote><p>PS: 使用 echo 命令时一定加上 -n 参数</p></blockquote><h3 id=32-查看节点>3.2. 查看节点</h3><p>URL: <a href=http://console.tke.com:8080/platform/apis/platform.tkestack.io/v1/machines/$%7Bmachine.metadata.name%7D>http://console.tke.com:8080/platform/apis/platform.tkestack.io/v1/machines/${machine.metadata.name}</a></p><p>Method: GET</p><p>Headers:</p><ol><li>Authorization: Bearer xxx</li></ol><p>假设平台中有 name 为 mc-brd44nzd 的 Machine 对象：</p><div class=highlight><pre style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-text data-lang=text>{
+  &#34;kind&#34;: &#34;Machine&#34;,
+  &#34;apiVersion&#34;: &#34;platform.tkestack.io/v1&#34;,
+  &#34;metadata&#34;: {
+    &#34;name&#34;: &#34;mc-brd44nzd&#34;,
+    &#34;generateName&#34;: &#34;mc-&#34;,
+    &#34;selfLink&#34;: &#34;/apis/platform.tkestack.io/v1/machines/mc-brd44nzd&#34;,
+    &#34;uid&#34;: &#34;9ef7c08f-c535-4e99-b11d-9f7d02be19f5&#34;,
+    &#34;resourceVersion&#34;: &#34;343953553&#34;,
+    &#34;creationTimestamp&#34;: &#34;2020-02-27T00:25:02Z&#34;
+  },
+  &#34;spec&#34;: {
+    &#34;finalizers&#34;: [
+      &#34;machine&#34;
+    ],
+    &#34;tenantID&#34;: &#34;default&#34;,
+    &#34;clusterName&#34;: &#34;xxxx&#34;,
+    &#34;type&#34;: &#34;Baremetal&#34;,
+    &#34;ip&#34;: &#34;xxxxxx&#34;,
+    &#34;port&#34;: 36000,
+    &#34;username&#34;: &#34;root&#34;,
+    &#34;password&#34;: &#34;xxxxxx&#34;
+  }
+}
+</code></pre></div><p>则查看该 Machine 部署进度的请求为：</p><div class=highlight><pre style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-text data-lang=text>curl &#34;http://console.tke.com:8080/platform/apis/platform.tkestack.io/v1/machines/mc-brd44nzd&#34; \
+-H &#34;Authorization: Bearer 你的访问凭证&#34;
+</code></pre></div><h3 id=33-删除节点>3.3. 删除节点</h3><p>URL: <a href=http://console.tke.com:8080/platform/apis/platform.tkestack.io/v1/machines/$%7Bmachine.metadata.name%7D>http://console.tke.com:8080/platform/apis/platform.tkestack.io/v1/machines/${machine.metadata.name}</a></p><p>Method: DELETE</p><p>Headers:</p><ol><li>Authorization: Bearer xxx</li></ol><p>假设平台中有 name 为 mc-brd44nzd 的 Machine 对象，则删除节点的请求为：</p><div class=highlight><pre style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-text data-lang=text>curl -X DELETE &#34;http://console.tke.com:8080/platform/apis/platform.tkestack.io/v1/machines/mc-brd44nzd&#34; \
+-H &#34;Authorization: Bearer 你的访问凭证&#34;
+</code></pre></div><h2 id=4-通过-api-获取业务信息>4. 通过 API 获取业务信息</h2><h3 id=41-查看自身所在业务>4.1. 查看自身所在业务</h3><div class=highlight><pre style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-text data-lang=text>curl &#39;http://console.tke.com:8080/business/apis/business.tkestack.io/v1/portal&#39; \
+-X GET \
+-H &#34;Authorization: Bearer 访问凭证&#34;
+</code></pre></div><h3 id=42-查看特定业务包含的-namespace-信息>4.2. 查看特定业务包含的 Namespace 信息</h3><div class=highlight><pre style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-text data-lang=text>curl &#39;http://console.tke.com:8080/business/apis/business.tkestack.io/v1/namespaces/prj-xxx/namespaces&#39; \
+-X GET \
+-H &#34;Authorization: Bearer 访问凭证&#34;
+prj-xxx 为业务 id
+</code></pre></div><h3 id=43-查看特定业务信息>4.3. 查看特定业务信息</h3><div class=highlight><pre style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-text data-lang=text>curl &#39;http://console.tke.com:8080/business/apis/business.tkestack.io/v1/projects/prj-xxx&#39; \
+-X GET \
+-H &#39;Authorization: Bearer 访问凭证&#39;
+prj-xxx为业务id
+</code></pre></div></div></main></div></div><footer class="bg-dark py-5 row d-print-none"><div class="container-fluid mx-sm-5"><div class=row><div class="col-6 col-sm-4 text-xs-center order-sm-2"></div><div class="col-6 col-sm-4 text-right text-xs-center order-sm-3"><ul class="list-inline mb-0"><li class="list-inline-item mx-2 h3" data-toggle=tooltip data-placement=top title=GitHub aria-label=GitHub><a class=text-white target=_blank rel=noopener href=https://github.com/tkestack/tke aria-label=GitHub><i class="fab fa-github"></i></a></li></ul></div><div class="col-12 col-sm-4 text-center py-2 order-sm-2"><small class=text-white>&copy; 2021 The TKEStack Authors All Rights Reserved</small></div></div></div></footer></div><script src=https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js integrity=sha384-9/reFTGAW83EW2RDu2S0VKaIzap3H66lZH81PoYlFhbGU+6BZp6G7niu735Sk7lN crossorigin=anonymous></script><script src=https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/js/bootstrap.min.js integrity=sha384-+YQ4JLhjyBLPDQt//I+STsc9iw4uQqACwlvpslubQzn4u2UU2UFM80nGisd026JF crossorigin=anonymous></script><script src=/web/js/main.min.1911ee3ae98d7d6df3807cd00d8e31ae7d1c08ee0f0bb587529b0483da4e5464.js integrity="sha256-GRHuOumNfW3zgHzQDY4xrn0cCO4PC7WHUpsEg9pOVGQ=" crossorigin=anonymous></script></body></html>
