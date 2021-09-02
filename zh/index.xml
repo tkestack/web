@@ -1,4 +1,107 @@
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Tkestack – TKEStack</title><link>/web/zh/</link><description>Recent content in TKEStack on Tkestack</description><generator>Hugo -- gohugo.io</generator><atom:link href="/web/zh/index.xml" rel="self" type="application/rss+xml"/><item><title>Blog: TKEStack 容器混合云能力介绍（1）：统一基石</title><link>/web/zh/blog/2021/08/02/hybrid-cloud-introduction-1/</link><pubDate>Mon, 02 Aug 2021 00:00:00 +0000</pubDate><guid>/web/zh/blog/2021/08/02/hybrid-cloud-introduction-1/</guid><description>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Tkestack – TKEStack</title><link>/web/zh/</link><description>Recent content in TKEStack on Tkestack</description><generator>Hugo -- gohugo.io</generator><atom:link href="/web/zh/index.xml" rel="self" type="application/rss+xml"/><item><title>Blog: TKEStack 集群容器运行时迁移</title><link>/web/zh/blog/2021/09/01/container-runtime-migraion/</link><pubDate>Wed, 01 Sep 2021 00:00:00 +0000</pubDate><guid>/web/zh/blog/2021/09/01/container-runtime-migraion/</guid><description>
+&lt;p>&lt;strong>Author&lt;/strong>: LeoRyu&lt;/p>
+&lt;p>&lt;em>Kubernetes宣布在1.20版本之后将弃用Docker作为容器运行时，在2021年末发布的1.23版本中将彻底移除dockershim组件。可能很多朋友不是很清楚容器运行时迁移工作要怎么做，本文将就TKEStack的global集群如何进行容器运行时迁移做详细介绍。同时，本文非TKEStack globa集群的容器运行时迁移也有很好的参考价值。&lt;/em>&lt;/p>
+&lt;h2 id="限制条件">限制条件&lt;/h2>
+&lt;ol>
+&lt;li>集群迁移前请确认master节点不止一个，单master节点切换容器运行时只能通过备份etcd数据再恢复集群方式，本文提供方法并不适用。&lt;/li>
+&lt;li>迁移前倾确认当前K8s集群支持以containerd作为容器运行时，这里建议集群版本为1.19+。&lt;/li>
+&lt;/ol>
+&lt;h2 id="迁移流程">迁移流程&lt;/h2>
+&lt;h3 id="准备工作">准备工作&lt;/h3>
+&lt;ol>
+&lt;li>每个节点上修改 docker daemon.json: &lt;code>vim /etc/docker/daemon.json&lt;/code>，将 &lt;code>&amp;quot;live-restore&amp;quot;&lt;/code> 修改为 &lt;code>false&lt;/code>。&lt;/li>
+&lt;li>每个节点重启 dcoker 服务： &lt;code>systemctl daemon-reload &amp;amp;&amp;amp; systemctl restart docker.service&lt;/code>。&lt;/li>
+&lt;li>修改galaxy ds：&lt;code>kubectl edit -n kube-system ds galaxy-daemonset&lt;/code>，在&lt;code>volumeMounts&lt;/code>和&lt;code>volumes&lt;/code>中添加以下内容：&lt;/li>
+&lt;/ol>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">...
+volumeMounts:
+- name: containerd-run
+mountPropagation: Bidirectional
+mountPath: /var/run/netns/
+...
+volumes:
+- name: containerd-run
+hostPath:
+path: /var/run/netns
+&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="非master0节点迁移">非master0节点迁移&lt;/h3>
+&lt;p>非global集群首个master节点的迁移步骤。&lt;/p>
+&lt;ol>
+&lt;li>封锁节点：&lt;code>kubectl cordon xxx&lt;/code>。&lt;/li>
+&lt;li>驱逐节点：&lt;code>kubectl drain xxx --ignore-daemonsets --delete-local-data&lt;/code>，注意该操作会删除 &lt;code>pod&lt;/code> 的本地临时数据。&lt;/li>
+&lt;li>停止Kubelet服务: &lt;code>systemctl stop kubelet&lt;/code>。&lt;/li>
+&lt;li>停止Docker服务：&lt;code>systemctl disable docker.service &amp;amp;&amp;amp; systemctl stop docker.service &amp;amp;&amp;amp; systemctl stop containerd.service&lt;/code>。&lt;/li>
+&lt;li>下载containerd，这里从 &lt;code>https://github.com/containerd/nerdctl/releases&lt;/code> 下载：&lt;code>curl -LO https://github.com/containerd/nerdctl/releases/download/v0.11.1/nerdctl-full-0.11.1-linux-amd64.tar.gz&lt;/code>。&lt;/li>
+&lt;li>安装containerd：&lt;code>tar Cxzvvf /usr/local nerdctl-full-0.11.1-linux-amd64.tar.gz&lt;/code>。&lt;/li>
+&lt;li>添加containerd自定义配置：&lt;/li>
+&lt;/ol>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">cat /etc/containerd/config.toml
+&lt;span style="color:#000">version&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">2&lt;/span>
+&lt;span style="color:#000">root&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;/var/lib/containerd&amp;#34;&lt;/span>
+&lt;span style="color:#000">state&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;/run/containerd&amp;#34;&lt;/span>
+&lt;span style="color:#ce5c00;font-weight:bold">[&lt;/span>grpc&lt;span style="color:#ce5c00;font-weight:bold">]&lt;/span>
+&lt;span style="color:#000">address&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;/run/containerd/containerd.sock&amp;#34;&lt;/span>
+&lt;span style="color:#000">gid&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>
+&lt;span style="color:#000">max_recv_message_size&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">16777216&lt;/span>
+&lt;span style="color:#000">max_send_message_size&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">16777216&lt;/span>
+&lt;span style="color:#000">uid&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>
+&lt;span style="color:#ce5c00;font-weight:bold">[&lt;/span>plugins&lt;span style="color:#ce5c00;font-weight:bold">]&lt;/span>
+&lt;span style="color:#ce5c00;font-weight:bold">[&lt;/span>plugins.&lt;span style="color:#4e9a06">&amp;#34;io.containerd.grpc.v1.cri&amp;#34;&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">]&lt;/span>
+&lt;span style="color:#000">sandbox_image&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;registry.tke.com/library/pause:3.2&amp;#34;&lt;/span>
+&lt;span style="color:#ce5c00;font-weight:bold">[&lt;/span>plugins.&lt;span style="color:#4e9a06">&amp;#34;io.containerd.grpc.v1.cri&amp;#34;&lt;/span>.cni&lt;span style="color:#ce5c00;font-weight:bold">]&lt;/span>
+&lt;span style="color:#000">bin_dir&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;/opt/cni/bin&amp;#34;&lt;/span>
+&lt;span style="color:#000">conf_dir&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;/etc/cni/net.d&amp;#34;&lt;/span>
+&lt;span style="color:#ce5c00;font-weight:bold">[&lt;/span>plugins.&lt;span style="color:#4e9a06">&amp;#34;io.containerd.grpc.v1.cri&amp;#34;&lt;/span>.containerd&lt;span style="color:#ce5c00;font-weight:bold">]&lt;/span>
+&lt;span style="color:#000">default_runtime_name&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#4e9a06">&amp;#34;runc&amp;#34;&lt;/span>
+&lt;span style="color:#ce5c00;font-weight:bold">[&lt;/span>plugins.&lt;span style="color:#4e9a06">&amp;#34;io.containerd.grpc.v1.cri&amp;#34;&lt;/span>.registry&lt;span style="color:#ce5c00;font-weight:bold">]&lt;/span>
+&lt;span style="color:#ce5c00;font-weight:bold">[&lt;/span>plugins.&lt;span style="color:#4e9a06">&amp;#34;io.containerd.grpc.v1.cri&amp;#34;&lt;/span>.registry.configs&lt;span style="color:#ce5c00;font-weight:bold">]&lt;/span>
+&lt;span style="color:#ce5c00;font-weight:bold">[&lt;/span>plugins.&lt;span style="color:#4e9a06">&amp;#34;io.containerd.grpc.v1.cri&amp;#34;&lt;/span>.registry.configs.&lt;span style="color:#4e9a06">&amp;#34;registry.tke.com&amp;#34;&lt;/span>.tls&lt;span style="color:#ce5c00;font-weight:bold">]&lt;/span>
+&lt;span style="color:#000">insecure_skip_verify&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#204a87">true&lt;/span>
+&lt;span style="color:#ce5c00;font-weight:bold">[&lt;/span>plugins.&lt;span style="color:#4e9a06">&amp;#34;io.containerd.grpc.v1.cri&amp;#34;&lt;/span>.registry.configs.&lt;span style="color:#4e9a06">&amp;#34;default.registry.tke.com&amp;#34;&lt;/span>.tls&lt;span style="color:#ce5c00;font-weight:bold">]&lt;/span>
+&lt;span style="color:#000">insecure_skip_verify&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#204a87">true&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;ol start="8">
+&lt;li>修改 &lt;code>kubelet&lt;/code> 参数：&lt;/li>
+&lt;/ol>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">cat /usr/lib/systemd/system/kubelet.service.d/10-kubeadm.conf
+&lt;span style="color:#8f5902;font-style:italic"># Note: This dropin only works with kubeadm and kubelet v1.11+&lt;/span>
+&lt;span style="color:#ce5c00;font-weight:bold">[&lt;/span>Service&lt;span style="color:#ce5c00;font-weight:bold">]&lt;/span>
+&lt;span style="color:#000">Environment&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#4e9a06">&amp;#34;KUBELET_KUBECONFIG_ARGS=--bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --kubeconfig=/etc/kubernetes/kubelet.conf&amp;#34;&lt;/span>
+&lt;span style="color:#000">Environment&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#4e9a06">&amp;#34;KUBELET_CONFIG_ARGS=--config=/var/lib/kubelet/config.yaml&amp;#34;&lt;/span>
+&lt;span style="color:#000">Environment&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#4e9a06">&amp;#34;KUBELET_RUNTIME_ARGS=--container-runtime=remote --container-runtime-endpoint=unix:///run/containerd/containerd.sock&amp;#34;&lt;/span>
+&lt;span style="color:#8f5902;font-style:italic"># This is a file that &amp;#34;kubeadm init&amp;#34; and &amp;#34;kubeadm join&amp;#34; generates at runtime, populating the KUBELET_KUBEADM_ARGS variable dynamically&lt;/span>
+&lt;span style="color:#000">EnvironmentFile&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>-/var/lib/kubelet/kubeadm-flags.env
+&lt;span style="color:#8f5902;font-style:italic"># This is a file that the user can use for overrides of the kubelet args as a last resort. Preferably, the user should use&lt;/span>
+&lt;span style="color:#8f5902;font-style:italic"># the .NodeRegistration.KubeletExtraArgs object in the configuration files instead. KUBELET_EXTRA_ARGS should be sourced from this file.&lt;/span>
+&lt;span style="color:#000">EnvironmentFile&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>-/etc/sysconfig/kubelet
+&lt;span style="color:#000">ExecStart&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>
+&lt;span style="color:#000">ExecStart&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>/usr/bin/kubelet &lt;span style="color:#000">$KUBELET_KUBECONFIG_ARGS&lt;/span> &lt;span style="color:#000">$KUBELET_CONFIG_ARGS&lt;/span> &lt;span style="color:#000">$KUBELET_KUBEADM_ARGS&lt;/span> &lt;span style="color:#000">$KUBELET_EXTRA_ARGS&lt;/span> &lt;span style="color:#000">$KUBELET_RUNTIME_ARGS&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;ol start="9">
+&lt;li>
+&lt;p>激活 &lt;code>containerd&lt;/code> 服务：&lt;code>systemctl daemon-reload &amp;amp;&amp;amp; systemctl enable containerd.service &amp;amp;&amp;amp; systemctl start containerd.service&lt;/code>。&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>启动kubelet服务：&lt;code>systemctl daemon-reload &amp;amp;&amp;amp; systemctl start kubelet.service&lt;/code>。&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>解除节点封锁：&lt;code>kubectl uncordon xxx&lt;/code>。&lt;/p>
+&lt;/li>
+&lt;/ol>
+&lt;h3 id="master0节点迁移">master0节点迁移&lt;/h3>
+&lt;p>如果你的集群不是TKEStack的global集群请忽略以下内容。如果你确定你当前的TKEStack没有使用内置的tke-registry作为镜像仓库，也可以忽略一下内容。&lt;/p>
+&lt;p>不确定哪个是master0节点的话，可以通过&lt;code>kubectl get pod -n tke -owide | grep tke-registry-api&lt;/code>查看pod所在节点，该节点就是mater0节点。&lt;/p>
+&lt;p>master0节点迁移放在其他节点迁移完成后在进行，相较非master0迁移多出了一下步骤：&lt;/p>
+&lt;ol>
+&lt;li>在步骤&lt;code>1. 封锁节点&lt;/code>前备份master0节点镜像到其他master节点：&lt;/li>
+&lt;/ol>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">&lt;span style="color:#8f5902;font-style:italic">## 使用docker在master0节点上执行：&lt;/span>
+docker save &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>docker images &lt;span style="color:#000;font-weight:bold">|&lt;/span> sed &lt;span style="color:#4e9a06">&amp;#39;1d&amp;#39;&lt;/span> &lt;span style="color:#000;font-weight:bold">|&lt;/span> awk &lt;span style="color:#4e9a06">&amp;#39;{print $1 &amp;#34;:&amp;#34; $2}&amp;#39;&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span> -o backup.tar
+&lt;span style="color:#8f5902;font-style:italic">## 使用nerdctl在其他master节点上执行：&lt;/span>
+nerdctl --namespace&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>k8s.io load -i backup.tar
+&lt;/code>&lt;/pre>&lt;/div>&lt;ol start="2">
+&lt;li>在步骤&lt;code>9. 激活 &lt;/code>containerd&lt;code> 服务&lt;/code>之后，步骤&lt;code>10. 启动kubelet服务&lt;/code>之前加载master0节点镜像：&lt;/li>
+&lt;/ol>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">&lt;span style="color:#8f5902;font-style:italic">## 使用nerdctl在master0节点上执行：&lt;/span>
+nerdctl --namespace&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>k8s.io load -i backup.tar
+&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Blog: TKEStack 容器混合云能力介绍（1）：统一基石</title><link>/web/zh/blog/2021/08/02/hybrid-cloud-introduction-1/</link><pubDate>Mon, 02 Aug 2021 00:00:00 +0000</pubDate><guid>/web/zh/blog/2021/08/02/hybrid-cloud-introduction-1/</guid><description>
 &lt;p>&lt;strong>Author&lt;/strong>: LeoRyu, HuXiaoLiang&lt;/p>
 &lt;p>&lt;em>随着云计算及云原生技术在各个领域内的逐步普及，基于 Kubernetes 的混合云相关概念和项目越来越受到人们的关注。以混合云形态部署企业的业务服务，在理论上可以最大化利用现有资源，形成差异互补和成本优化。以云计算及云原生技术作为基础设施的企业大致可以分为两类：一种是已经有存量 IDC 的企业，一种是业务全面使用公有云的企业。从已经有存量 IDC 的企业角度考虑，混合云可以最大化利用现有IDC资源的同时，既可以发挥 IDC 的灵活安全能力，也可以享受到公有云的高性价比优势；从业务全面使用公有云的企业角度考虑，混合云在为企业提供不同云服务商的差异能力的同时，也减少了企业绑定单一云服务商的潜在风险。尽管混合云的愿景是美好的，但走向这愿景的路并非简单。本文将着重介绍 TKEStack 提供混合云能力的道路上，在统一操作系统版本、 Kubernetes 版本、容器运行时和用户交互上遇到的困境与解决方案。&lt;/em>&lt;/p>
 &lt;h2 id="不统一带来的问题">不统一带来的问题&lt;/h2>
