@@ -36,11 +36,11 @@ TKEStack目前支持两种GPU类型：
 
 用户在新建独立集群时，勾选GPU选项，在下拉选项中选择 vGPU，如下图所示：
 
-![gpu-1.png](images/gpu-1.png)
+![](../images/gpu-1.png)
 
 目标机器部分，勾选GPU选项，平台会自动为节点安装GPU驱动，如下图所示：
 
-![gpu-2.png](images/gpu-2.png)
+![](../images/gpu-2.png)
 
 等待新建独立集群处于running状态后，可以通过登陆到集群节点通过`kubectl`查看在集群`kube-system`命名空间中部署了`gpu-manager`和`gpu-quota-admission`两个pod：
 ```
@@ -61,7 +61,7 @@ TKEStack创建使用GPU的工作负载支持两种方式：第一种是通过TKE
 > 1. 卡数只能填写 0.1 到 1 之间的两位小数或者是所有自然数，例如：0、0.3、0.56、0.7、0.9、1、6、34，不支持 1.5、2.7、3.54
 > 2. 显存只能填写自然数 n，负载使用的显存为 n*256MiB
 
-![gpu-3.png](images/gpu-3.png)
+![](../images/gpu-3.png)
 
 2、 通过后台命令行创建
 
@@ -151,11 +151,11 @@ container_request_gpu_utilization{container_name="nginx",namespace="default",nod
 
 用户在新建独立集群时，勾选GPU选项，在下拉选项中选择pGPU，如下图所示：
 
-![gpu-4.png](images/gpu-4.png)
+![](../images/gpu-4.png)
 
 目标机器部分，勾选GPU选项，平台会自动为节点安装GPU驱动，如下图所示：
 
-![gpu-2.png](images/gpu-2.png)
+![](../images/gpu-2.png)
 
 等待新建独立集群处于running状态后，可以通过登陆到集群节点通过`kubectl`查看到，在集群`kube-system`命名空间中部署了`nvidia-device-plugin`pod：
 ```
@@ -246,5 +246,5 @@ Allocated resources:
 #### 添加节点使用GPU
 在添加节点上使用GPU资源，需要在创建添加节点时勾选GPU选项，如下图所示：
 
-![gpu-5.png](images/gpu-5.png)
+![](../images/gpu-5.png)
 
