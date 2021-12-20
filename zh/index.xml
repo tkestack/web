@@ -1,4 +1,172 @@
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Tkestack – TKEStack</title><link>/web/zh/</link><description>Recent content in TKEStack on Tkestack</description><generator>Hugo -- gohugo.io</generator><atom:link href="/web/zh/index.xml" rel="self" type="application/rss+xml"/><item><title>Blog: TKEStack 集群容器运行时迁移</title><link>/web/zh/blog/2021/09/01/container-runtime-migraion/</link><pubDate>Wed, 01 Sep 2021 00:00:00 +0000</pubDate><guid>/web/zh/blog/2021/09/01/container-runtime-migraion/</guid><description>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Tkestack – TKEStack</title><link>/web/zh/</link><description>Recent content in TKEStack on Tkestack</description><generator>Hugo -- gohugo.io</generator><atom:link href="/web/zh/index.xml" rel="self" type="application/rss+xml"/><item><title>Blog: TKEStack 中的认证与鉴权</title><link>/web/zh/blog/2021/12/18/tkestack-auth/</link><pubDate>Sat, 18 Dec 2021 00:00:00 +0000</pubDate><guid>/web/zh/blog/2021/12/18/tkestack-auth/</guid><description>
+&lt;p>&lt;strong>Author&lt;/strong>: LeoRyu&lt;/p>
+&lt;p>&lt;em>认证鉴权对于 K8s 而言可以说是最为复杂、灵活和关键的部分，本文将介绍 TKEStack 中认证鉴权机制是如何运作的。&lt;/em>&lt;/p>
+&lt;h2 id="开始之前">开始之前&lt;/h2>
+&lt;p>由于认证鉴权涉及的相关知识很多，为了避免读者在下面探究 TKEStack 认证鉴权机制时查处相关名词知识，在开始之前先介绍一些本文涉及到的知识概念。&lt;/p>
+&lt;h3 id="k8s-中的一些身份认证方式">K8s 中的一些身份认证方式&lt;/h3>
+&lt;ul>
+&lt;li>
+&lt;p>X509 客户证书。通过给 API 服务器传递 &lt;code>--client-ca-file=SOMEFILE&lt;/code> 选项，就可以启动客户端证书身份认证。 所引用的文件必须包含一个或者多个证书机构，用来验证向 API 服务器提供的客户端证书。 如果提供了客户端证书并且证书被验证通过，则 subject 中的公共名称（Common Name）就被 作为请求的用户名。&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>静态令牌文件。当 API 服务器的命令行设置了 &lt;code>--token-auth-file=SOMEFILE&lt;/code> 选项时，会从文件中 读取持有者令牌。目前，令牌会长期有效，并且在不重启 API 服务器的情况下 无法更改令牌列表。&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>服务账号令牌。服务账号（Service Account）是一种自动被启用的用户认证机制，使用经过签名的 持有者令牌来验证请求。服务账号通常由 API 服务器自动创建并通过 ServiceAccount 准入控制器 关联到集群中运行的 Pod 上。 持有者令牌会挂载到 Pod 中可预知的位置，允许集群内进程与 API 服务器通信。 服务账号也可以使用 Pod 规约的 serviceAccountName 字段显式地关联到 Pod 上。&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>OpenID Connect（OIDC）令牌。OpenID Connect 是一种 OAuth2 认证方式， 被某些 OAuth2 提供者支持，例如 Azure 活动目录、Salesforce 和 Google。 协议对 OAuth2 的主要扩充体现在有一个附加字段会和访问令牌一起返回， 这一字段称作 ID Token（ID 令牌）。详情可参考 &lt;a href="https://openid.net/connect/">https://openid.net/connect/&lt;/a> 。&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;p>更多认证相关信息可参考 &lt;a href="https://kubernetes.io/zh/docs/reference/access-authn-authz/authentication/">用户认证&lt;/a>[1]。&lt;/p>
+&lt;h3 id="k8s-中的一些鉴权方式">K8s 中的一些鉴权方式&lt;/h3>
+&lt;ul>
+&lt;li>Node。一个专用鉴权组件，根据调度到 kubelet 上运行的 Pod 为 kubelet 授予权限。&lt;/li>
+&lt;li>ABAC。基于属性的访问控制（ABAC）定义了一种访问控制范型，通过使用将属性组合 在一起的策略，将访问权限授予用户。策略可以使用任何类型的属性（用户属性、资源属性、 对象，环境属性等）。&lt;/li>
+&lt;li>RBAC。基于角色的访问控制（RBAC）是一种基于企业内个人用户的角色来管理对 计算机或网络资源的访问的方法。在此上下文中，权限是单个用户执行特定任务的能力， 例如查看、创建或修改文件。&lt;/li>
+&lt;li>Webhook。WebHook 是一个 HTTP 回调：发生某些事情时调用的 HTTP POST； 通过 HTTP POST 进行简单的事件通知。实现 WebHook 的 Web 应用程序会在发生某些事情时 将消息发布到 URL。&lt;/li>
+&lt;li>AlwaysAllow。允许所有请求。仅在你不需要 API 请求 的鉴权时才使用。&lt;/li>
+&lt;li>AlwaysDeny。阻止所有请求。仅用于测试。&lt;/li>
+&lt;/ul>
+&lt;p>更多认证相关信息可参考 &lt;a href="https://kubernetes.io/zh/docs/reference/access-authn-authz/authorization/">鉴权概述&lt;/a>[2]。&lt;/p>
+&lt;h3 id="casbin">Casbin&lt;/h3>
+&lt;p>Casbin 是一款轻量级的开源访问控制框架，支持 PERM 模式（Policy，Effect，Request，Matchers），相关概念如下：&lt;/p>
+&lt;ul>
+&lt;li>Request：定义了请求的元组对象，至少包含访问实体（sub）、访问的资源（obj）和行为（Action），例如：r={sub, obj,act}。&lt;/li>
+&lt;li>Policy：定义了鉴权规则各字段的名称和顺序，至少包含访问实体（sub）、访问的资源（obj）和行为（Action），例如：p={sub, obj, act}。&lt;/li>
+&lt;li>Matchers：定义了 Request 和 Policy 的匹配规则。&lt;/li>
+&lt;li>Effect：用于对所有 Matchers 匹配后的结果，再进行一次逻辑组合判断（例如：e = some(where (p.eft == allow)) &amp;amp;&amp;amp; !some(where (p.eft == deny))，这个例子组合的逻辑含义是：如果有匹配出结果为 alllow 的策略，并且没有匹配出结果为 deny 的策略，则结果为真，如果有任何deny，都为假）。&lt;/li>
+&lt;/ul>
+&lt;p>关于本项目详细信息可以参考 &lt;a href="https://casbin.org/docs/zh-CN/overview">Casbin 概述&lt;/a>[3]。&lt;/p>
+&lt;h2 id="两种认证鉴权场景">两种认证鉴权场景&lt;/h2>
+&lt;p>TKEStack 扩展 K8s API 的方式是通过 aggregated apiserver[4] 实现的，这种方式与 CRD 的方式不同，每一个扩展组件都可以被视为一个独立的 APIServer，这使得 TKEStack 的认证鉴权相较之下更加灵活，但也更加复杂。为了更加方便和清晰地展示认证鉴权的流程，这里我们分为两种场景分别展开：第一种是用户通过浏览器由 tke-gateway 入口访问各个组件的资源；第二种是用户通过 kubectl 由 kube-apiserver 入口访问各个组件的资源。&lt;/p>
+&lt;h2 id="由浏览器发起的访问">由浏览器发起的访问&lt;/h2>
+&lt;h3 id="认证">认证&lt;/h3>
+&lt;p>用户通过浏览器登陆访问的用户信息并不是 K8s 集群可以识别的用户，无法由集群本身进行认证流程，需要外部的 OIDC provider 进行认证。在 TKEStack 中承担此工作的是 tke-auth 组件，tke-auth 中是通过 &lt;a href="https://github.com/dexidp/dex">dex&lt;/a> 实现的 OIDC 服务。&lt;/p>
+&lt;p>在由浏览器发起的访问场景下，认证流程的链路大致分为两步骤：&lt;/p>
+&lt;ol>
+&lt;li>&lt;code>用户浏览器中登录 -&amp;gt; tke-gateway -&amp;gt; tke-auth返回认证信息凭证 -&amp;gt; 设置访问凭证到浏览器&lt;/code>&lt;/li>
+&lt;li>&lt;code>已有访问凭证的前端 -&amp;gt; tke-gateway -&amp;gt; tke-xxxx -&amp;gt; tke-auth校验认证凭证&lt;/code>&lt;/li>
+&lt;/ol>
+&lt;p>整个认证过程中数据传输都是通过浏览器或是 TKEStack 系统组件完成的，没有 kube-apiserver 的参与。&lt;/p>
+&lt;h3 id="鉴权">鉴权&lt;/h3>
+&lt;p>当前版本 TKEStack 系统组件的鉴权模式默认是以 &lt;a href="https://kubernetes.io/docs/reference/access-authn-authz/authorization/">SubjectAccessReview&lt;/a> 继承了 kube-apiserver 的鉴权模式，而 kube-apiserver 中鉴权模式配置了 webhook 指向了 tke-auth 组件。&lt;/p>
+&lt;p>tke-auth 中的鉴权是基于 &lt;a href="https://github.com/casbin/casbin">casbin&lt;/a> 实现的，基于其 PERM 模型 TKEStack 完成了一套 RBAC 模型的实现：&lt;/p>
+&lt;pre>&lt;code>[request_definition]
+r = sub, dom, obj, act
+[policy_definition]
+p = sub, dom, obj, act, eft
+[role_definition]
+g = _, _, _
+[policy_effect]
+e = some(where (p.eft == allow)) &amp;amp;&amp;amp; !some(where (p.eft == deny))
+[matchers]
+m = g(r.sub, p.sub, r.dom) &amp;amp;&amp;amp; keyMatchCustom(r.obj, p.obj) &amp;amp;&amp;amp; keyMatchCustom(r.act, p.act)
+&lt;/code>&lt;/pre>&lt;ul>
+&lt;li>request_definition：定义了模型的 Request&lt;/li>
+&lt;li>policy_definition：定义了模型的 Policy&lt;/li>
+&lt;li>role_definition：定义了模型的用户和角色的映射关系， 三个空缺分别表示用户, 角色, 域，TKEStack 使用的域为业务 ID&lt;/li>
+&lt;li>policy_effect：定义了模型的 Effect&lt;/li>
+&lt;li>matchers：定义了模型的匹配方式，keyMatchCustom 为自定义匹配函数，支持以正则匹配和通配符的方式，匹配 Role 和 Policy 的字段&lt;/li>
+&lt;/ul>
+&lt;p>用户通过浏览器访问场景下 TKEStack 的鉴权流程整个链路如下：&lt;/p>
+&lt;p>&lt;code>用户浏览器发起请求 -&amp;gt; tke-gateway -&amp;gt; tke-xxx -&amp;gt; kube-apiserver webhook -&amp;gt; tke-auth返回鉴权结果&lt;/code>&lt;/p>
+&lt;h2 id="集群内由-kubectl-发起的请求">集群内由 kubectl 发起的请求&lt;/h2>
+&lt;h3 id="认证-1">认证&lt;/h3>
+&lt;p>集群内通过 kubectl 发起请求场景下的认证流程与 K8s 本身的认证流程基本无异，因此整个链路也非常简单：&lt;/p>
+&lt;p>&lt;code>kubectl 读取 kubeconfig 中的认证信息 -&amp;gt; kube-apiserver 检验认证信息&lt;/code>&lt;/p>
+&lt;p>由于此场景下的用户信息是可以被 K8s 识别的，且 kubectl 是直接连接 kube-apiserver 的，认证流程在请求到达 TKEStack 系统组件之前就完成了。&lt;/p>
+&lt;h3 id="鉴权-1">鉴权&lt;/h3>
+&lt;p>之前在由浏览器发起访问场景中已经提到 TKEStack 系统组件的鉴权模式是以 &lt;a href="https://kubernetes.io/docs/reference/access-authn-authz/authorization/">SubjectAccessReview&lt;/a> 继承了 kube-apiserver 的鉴权模式，这种模式也同样适用于集群内由 kubectl 发起请求的场景，只不过在 kube-apiserver 中生效的鉴权模式不再是指向 tke-auth 的 webhook，而是 K8s 的 RBAC/ABAC 模式。&lt;/p>
+&lt;p>整个鉴权流程的链路如下：&lt;/p>
+&lt;p>&lt;code>kubectl 发起请求 -&amp;gt; kube-apiserver -&amp;gt; tke-xxx -&amp;gt; kube-apiserver 返回 RBAC/ABAC 鉴权结果&lt;/code>&lt;/p>
+&lt;p>[1] Kubernetes 用户认证 [https://kubernetes.io/zh/docs/reference/access-authn-authz/authentication/]&lt;/p>
+&lt;p>[2] Kubernetes 鉴权概述 [https://kubernetes.io/zh/docs/reference/access-authn-authz/authorization/]&lt;/p>
+&lt;p>[3] Casbin 概述 [https://casbin.org/docs/zh-CN/overview]&lt;/p>
+&lt;p>[4] Kubernetes API Aggregation Layer [https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/apiserver-aggregation/]&lt;/p></description></item><item><title>Blog: TKEStack 容器混合云能力介绍（2）：打破网络边界</title><link>/web/zh/blog/2021/12/15/hybrid-cloud-introduction-2/</link><pubDate>Wed, 15 Dec 2021 00:00:00 +0000</pubDate><guid>/web/zh/blog/2021/12/15/hybrid-cloud-introduction-2/</guid><description>
+&lt;p>&lt;strong>Author&lt;/strong>: LeoRyu&lt;/p>
+&lt;p>&lt;em>TKEStack 提供了多集群管理能力，其中导入集群功能通过推送模式由 TKEStack 管控集群（global cluster）直连第三方集群的 api-server 进而统一纳管部署在 IDC，公有云或边缘的第三方集群。 但在实际生产环境中， 管控集群和第三方集群之间的直连往往会出现很多阻碍：或是不在同一个二层网络下，或是第三方集群在防火墙/NAT之后，或是第三方集群在网络策略上不允许有入站网络传输，在这些场景下, TKEStack难以直连第三方集群 api-server, 导入集群的能力无法发挥。针对这一问题本文将介绍 TKEStack 如何借助腾讯云原生分布式云中心注册集群的功能打破网络边界的限制，将网络环境相对隔离的集群纳入到 TKEStack 的管控面，进行统一管控。&lt;/em>&lt;/p>
+&lt;h2 id="tkestack-的导入集群功能">TKEStack 的导入集群功能&lt;/h2>
+&lt;p>开源版 TKEStack 的集群管理中&lt;sup>[1]&lt;/sup>存在两种集群的概念，一种是&lt;code>独立集群&lt;/code>，另一种是&lt;code>导入集群&lt;/code>。&lt;/p>
+&lt;p>其中&lt;code>独立集群&lt;/code>需要用户提供可被 TKEStack 访问的 Linux 机器的访问凭证，TKEStack 将以用户提供的机器作为基础设施，从 0 搭建可被 TKEStack 管控的 K8s 集群。&lt;/p>
+&lt;img alt="独立集群" width="100%" src="baremetal-cluster.png">
+&lt;p>&lt;code>导入集群&lt;/code>则是将用户的现存集群纳入到 TKEStack 的管控之下，但需要此集群可以被 TKEStack 访问到（无需被导入集群可访问 TKEStack），用户在满足此条件前提下可提供被导入集群的访问凭证，便可将集群纳入到 TKEStack 管控视野内。&lt;/p>
+&lt;img alt="导入集群" width="100%" src="import-cluster.png">
+&lt;p>但是在现实生产环境中，被导入集群有极大的可能性处于外网无法访问的网络环境中，此时我们可以借助腾讯云的分布式云中心来打通 TKEStack 与被导入集群间的网络边界限制。&lt;/p>
+&lt;h2 id="打破网络边界">打破网络边界&lt;/h2>
+&lt;p>云原生分布式云中心（Tencent Kubernetes Engine Distributed Cloud Center，TDCC）&lt;sup>[2]&lt;/sup> 是腾讯面向多云多集群场景的应用管理平台，支持用户将云原生化的应用扩展到分布式云，打通公有云、私有云、边缘云的界限，将各种成熟的集群、网络、存储、微服务、运维等公有云产品和服务交付至更接近用户和数据的位置，确保不同云基础设施下拥有一致的控制平面，并且提供可靠性保证和安全合规保证，满足企业用户的多云管理、应用治理、高可用容灾等场景诉求。&lt;/p>
+&lt;p>下面笔者将演示在家庭网络环境下（可访问公网）使用 kind&lt;sup>[3]&lt;/sup> 创建一个 K8s 集群，并借助分布式云中心，将其导入一个私有云网络环境下（可访问公网）的 TKEStack。由于 TKEStack 在 v1.8 release 时云原生分布式云中心还未上线，这里需要我们使用 daily build 版本进行体验，该功能的正式发布则需要等到稍晚些 TKEStack v1.9.0 发布，daily build 版本下载可参考以下命令：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">&lt;span style="color:#000">version&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>310e18e0d696ee0aa57dfe38655b99726eab9f5c &lt;span style="color:#ce5c00;font-weight:bold">&amp;amp;&amp;amp;&lt;/span> wget https://tke-release-1251707795.cos.ap-guangzhou.myqcloud.com/tke-installer-linux-amd64-&lt;span style="color:#000">$version&lt;/span>.run&lt;span style="color:#ce5c00;font-weight:bold">{&lt;/span>,.sha256&lt;span style="color:#ce5c00;font-weight:bold">}&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">&amp;amp;&amp;amp;&lt;/span> sha256sum --check --status tke-installer-linux-amd64-&lt;span style="color:#000">$version&lt;/span>.run.sha256 &lt;span style="color:#ce5c00;font-weight:bold">&amp;amp;&amp;amp;&lt;/span> chmod +x tke-installer-linux-amd64-&lt;span style="color:#000">$version&lt;/span>.run &lt;span style="color:#ce5c00;font-weight:bold">&amp;amp;&amp;amp;&lt;/span> ./tke-installer-linux-amd64-&lt;span style="color:#000">$version&lt;/span>.run
+&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="创建-kind-集群">创建 kind 集群&lt;/h3>
+&lt;p>这里笔者在自己的虚拟机上使用 kind 创建一个集群，首先是安装 kind：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.11.1/kind-linux-amd64
+chmod +x ./kind
+mv kind /usr/bin/
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>然后我们执行 kind 的创建集群命令：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">kind create cluster
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>如果不出意外我们将在等待一段时间后得到以下结果：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">Creating cluster &lt;span style="color:#4e9a06">&amp;#34;kind&amp;#34;&lt;/span> ...
+✓ Ensuring node image &lt;span style="color:#ce5c00;font-weight:bold">(&lt;/span>kindest/node:v1.21.1&lt;span style="color:#ce5c00;font-weight:bold">)&lt;/span> 🖼
+✓ Preparing nodes 📦
+✓ Writing configuration 📜
+✓ Starting control-plane 🕹️
+✓ Installing CNI 🔌
+✓ Installing StorageClass 💾
+Set kubectl context to &lt;span style="color:#4e9a06">&amp;#34;kind-kind&amp;#34;&lt;/span>
+You can now use your cluster with:
+kubectl cluster-info --context kind-kind
+Not sure what to &lt;span style="color:#204a87;font-weight:bold">do&lt;/span> next? 😅 Check out https://kind.sigs.k8s.io/docs/user/quick-start/
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>下面可以使用 kubectl 来确认一下集群是否在正常运行，这里我们就完成了 kind 集群的创建工作。如果你的机器上没有 kubectl 可以参考&lt;a href="https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/">Install and Set Up kubectl on Linux
+&lt;/a>进行安装。&lt;/p>
+&lt;h3 id="注册集群到分布式云中心">注册集群到分布式云中心&lt;/h3>
+&lt;p>访问腾讯云的&lt;a href="https://console.cloud.tencent.com/tdcc/cluster">分布式云中心主页&lt;/a>，选择注册集群按钮。&lt;/p>
+&lt;img alt="注册集群1" width="100%" src="register-cluster-1.png">
+&lt;p>这里由于我们是通过 kind 创建的集群并非 TKE，所以注意选择非 TKE 集群。&lt;/p>
+&lt;img alt="注册集群2" width="100%" src="register-cluster-2.png">
+&lt;p>注册集群创建成功后改集群将处于等待注册的状态，点击查看注册命令。&lt;/p>
+&lt;img alt="注册集群3" width="100%" src="register-cluster-3.png">
+&lt;p>由于我们的 kind 集群无法无法通过内外与分布式云中心通信，注意选择外网访问。&lt;/p>
+&lt;img alt="注册集群4" width="100%" src="register-cluster-4.png">
+&lt;p>根据提示将&lt;code>agent.yaml&lt;/code>下载下来然后通过 kubectl 部署到 kind 集群：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">kubectl apply -f agent.yaml
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>如果顺利我们将会得到以下反馈：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">namespace/clusternet-system created
+serviceaccount/clusternet-agent created
+serviceaccount/clusternet-app-deployer created
+deployment.apps/clusternet-agent created
+clusterrole.rbac.authorization.k8s.io/clusternet:app:deployer created
+clusterrolebinding.rbac.authorization.k8s.io/clusternet:app:deployer created
+secret/clusternet-agent-cluster-registration created
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>此时可以通过下面的命令确认下 agent 相关 pod 是否正常工作：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">kubectl get pod -n clusternet-system
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>如果正常我们应当会得到类似下面的反馈：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">NAMESPACE NAME READY STATUS RESTARTS AGE
+clusternet-system clusternet-agent-6754cc97bb-dk6r4 1/1 Running &lt;span style="color:#0000cf;font-weight:bold">0&lt;/span> 8s
+clusternet-system clusternet-agent-6754cc97bb-sbpzg 1/1 Running &lt;span style="color:#0000cf;font-weight:bold">0&lt;/span> 8s
+clusternet-system clusternet-agent-6754cc97bb-zfblp 1/1 Running &lt;span style="color:#0000cf;font-weight:bold">0&lt;/span> 8s
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>再检查分布式云中心首页我们将发现 kind 集群已经成功注册了进来。&lt;/p>
+&lt;h3 id="导入集群到-tkestack">导入集群到 TKEStack&lt;/h3>
+&lt;p>下面我们将把 kind 集群导入到 TKEStack 中，首先从分布式云中心将集群的访问凭证下载下来。&lt;/p>
+&lt;img alt="注册集群5" width="100%" src="register-cluster-5.png">
+&lt;img alt="注册集群6" width="100%" src="register-cluster-6.png">
+&lt;p>然后使用此凭证便可将 kind 集群导入到 TKEStack 中。&lt;/p>
+&lt;img alt="注册集群7" width="100%" src="register-cluster-7.png">
+&lt;img alt="注册集群8" width="100%" src="register-cluster-8.png">
+&lt;img alt="注册集群9" width="100%" src="register-cluster-9.png">
+&lt;h2 id="原理">原理&lt;/h2>
+&lt;p>腾讯云分布式云中心的核心功能由 Clusternet&lt;sup>[4]&lt;/sup> 提供，该项目已经开源，可以在 &lt;a href="https://github.com/clusternet/clusternet">https://github.com/clusternet/clusternet&lt;/a> 仓库下查看代码。&lt;/p>
+&lt;p>Clusternet 的核心能力通过&lt;code>clusternet-hub&lt;/code>和&lt;code>clusternet-agent&lt;/code>两个组件实现，&lt;code>clusternet-hub&lt;/code>的角色类似一个电插板，以 aggregated apiserver&lt;sup>[5]&lt;/sup> 形式部署在父集群中等待着子集群被接入进来；&lt;code>clusternet-agent&lt;/code>则在子集群中充当一个派驻信使的角色，一方面将子集群的信息上报给&lt;code>clusternet-hub&lt;/code>以进行观测，另一方面将从&lt;code>clusternet-hub&lt;/code>传送来的指令下发给子集群以进行控制。鉴权模式上 Clusternet 复用了子集群的鉴权能力，通过 K8s 的 user impersonation&lt;sup>[6]&lt;/sup> 能力将认证信息发送到&lt;code>clusternet-agent&lt;/code>模拟对应用户进行操作控制。&lt;/p>
+&lt;img alt="clusternet架构" width="100%" src="clusternet-arch.png">
+&lt;h2 id="加入我们">加入我们&lt;/h2>
+&lt;p>在大家的共同努力下 TKEStack 已经演进到 v1.8.x 版本，其中包括了 containerd 支持、cilium 支持、集群应用定义等诸多新功能，欢迎大家到 &lt;a href="https://github.com/tkestack/tke/releases">https://github.com/tkestack/tke/releases&lt;/a> 下载体验。同时 v1.9.0 版本的开发工作正在主分支上火热进行中，v1.9.0 版本中除了本文介绍的支持导入分布式云中心集群外，我们会全面升级 TKEStack 的各种依赖，包括 golang 版本、CI 工具版本以及 K8s api 版本等，此外我们还将在 TKEStack 的轻量化减负上做出努力，包括移除 TKE 发行版&lt;sup>[7]&lt;/sup>以外的集群版本，删减不常用的 addon 组件等。当下的 TKEStack 正是需要你加入的时候，欢迎大家到项目仓库 &lt;a href="https://github.com/tkestack/tke">https://github.com/tkestack/tke&lt;/a> 贡献一份力量！&lt;/p>
+&lt;h2 id="参考资料">参考资料&lt;/h2>
+&lt;p>[1] TKEStack 集群管理 [https://tkestack.github.io/docs/user-guide/platform-console/cluster-mgmt.html]&lt;/p>
+&lt;p>[2] 腾讯云原生分布式云中心 [https://cloud.tencent.com/document/product/1517/63246]&lt;/p>
+&lt;p>[3] Kind, running local Kubernetes clusters using Docker [https://kind.sigs.k8s.io/]&lt;/p>
+&lt;p>[4] Clusternet [https://github.com/clusternet/clusternet]&lt;/p>
+&lt;p>[5] Kubernetes API Aggregation Layer [https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/apiserver-aggregation/]&lt;/p>
+&lt;p>[6] User impersonation [https://kubernetes.io/docs/reference/access-authn-authz/authentication/#user-impersonation]&lt;/p>
+&lt;p>[7] TKE Kubernetes Distro [https://github.com/tkestack/tke-k8s-distro]&lt;/p></description></item><item><title>Blog: TKEStack 集群容器运行时迁移</title><link>/web/zh/blog/2021/09/01/container-runtime-migraion/</link><pubDate>Wed, 01 Sep 2021 00:00:00 +0000</pubDate><guid>/web/zh/blog/2021/09/01/container-runtime-migraion/</guid><description>
 &lt;p>&lt;strong>Author&lt;/strong>: LeoRyu&lt;/p>
 &lt;p>&lt;em>Kubernetes宣布在1.20版本之后将弃用Docker作为容器运行时，在2021年末发布的1.23版本中将彻底移除dockershim组件。可能很多朋友不是很清楚容器运行时迁移工作要怎么做，本文将就TKEStack的global集群如何进行容器运行时迁移做详细介绍。同时，本文非TKEStack globa集群的容器运行时迁移也有很好的参考价值。&lt;/em>&lt;/p>
 &lt;h2 id="限制条件">限制条件&lt;/h2>
