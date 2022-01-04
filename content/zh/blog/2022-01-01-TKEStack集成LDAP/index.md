@@ -1,7 +1,7 @@
 ---
 layout: blog
 title: "TKEStack 集成LDAP"
-date: 2022-01-01
+date: 2022-01-04
 # slug of this blog url
 slug: tkestack-ldap
 ---
