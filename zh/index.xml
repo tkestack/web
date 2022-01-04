@@ -1,4 +1,229 @@
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Tkestack – TKEStack</title><link>/web/zh/</link><description>Recent content in TKEStack on Tkestack</description><generator>Hugo -- gohugo.io</generator><atom:link href="/web/zh/index.xml" rel="self" type="application/rss+xml"/><item><title>Blog: TKEStack 容器混合云能力介绍（2）：打破网络边界</title><link>/web/zh/blog/2021/12/20/hybrid-cloud-introduction-2/</link><pubDate>Mon, 20 Dec 2021 00:00:00 +0000</pubDate><guid>/web/zh/blog/2021/12/20/hybrid-cloud-introduction-2/</guid><description>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Tkestack – TKEStack</title><link>/web/zh/</link><description>Recent content in TKEStack on Tkestack</description><generator>Hugo -- gohugo.io</generator><atom:link href="/web/zh/index.xml" rel="self" type="application/rss+xml"/><item><title>Blog: TKEStack 集成LDAP</title><link>/web/zh/blog/2022/01/04/tkestack-ldap/</link><pubDate>Tue, 04 Jan 2022 00:00:00 +0000</pubDate><guid>/web/zh/blog/2022/01/04/tkestack-ldap/</guid><description>
+&lt;p>&lt;strong>Author&lt;/strong>: LeoRyu&lt;/p>
+&lt;p>&lt;em>LDAP 是一个开放的，中立的，工业标准的应用协议，在开发内部网和与互联网程序共享用户、系统、网络、服务和应用的过程中占据了重要地位。本文将介绍 TKEStack中的 tke-auth 组件如何与 LDAP进行集成。&lt;/em>&lt;/p>
+&lt;h2 id="前置要求">前置要求&lt;/h2>
+&lt;p>本文介绍的内容是建立在已经有一个正常运行的 TKEStack 平台基础上，由于集成 LDAP 功能在当前已 release 版本中存在问题，这里建议安装 daily build 版本的 tke-installer 安装 TKEStack：&lt;code>version=be9b9469bf10faeabb9ba60a8591aad2b5f73f41 wget https://tke-release-1251707795.cos.ap-guangzhou.myqcloud.com/tke-installer-linux-amd64-$version.run{,.sha256} &amp;amp;&amp;amp; sha256sum --check --status tke-installer-linux-amd64-$version.run.sha256 &amp;amp;&amp;amp; chmod +x tke-installer-linux-amd64-$version.run &amp;amp;&amp;amp; ./tke-installer-linux-amd64-$version.run&lt;/code>。&lt;/p>
+&lt;p>本文介绍的内容需要通过 helm 安装一些实验用途的组件，可参考&lt;a href="https://helm.sh/zh/docs/intro/install/">安装Helm&lt;/a>进行安装。&lt;/p>
+&lt;h2 id="安装-openldap">安装 openldap&lt;/h2>
+&lt;p>这里如果有现成的 LDAP 服务器可以跳过此步骤。&lt;/p>
+&lt;p>首先通过以下命令下载 openldap 的 chart：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">wget https://tke-release-1251707795.cos.ap-guangzhou.myqcloud.com/charts/openldap-1.2.7.tgz
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>将下面的 yaml 存储到&lt;code>values-openldap.yaml&lt;/code>：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">replicaCount&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">image&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">repository&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">osixia/openldap&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">tag&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1.2.4&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">pullPolicy&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">IfNotPresent&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">tls&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">enabled&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">CA&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">enabled&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">service&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">clusterIP&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">ldapPort&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">389&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">type&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">ClusterIP&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">env&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">LDAP_ORGANISATION&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;TKEStack Demo&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">LDAP_DOMAIN&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;tkestack.io&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">LDAP_BACKEND&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;hdb&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">LDAP_TLS&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;true&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">LDAP_TLS_ENFORCE&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;false&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">LDAP_REMOVE_CONFIG_AFTER_SETUP&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;true&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">LDAP_READONLY_USER&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;true&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">LDAP_READONLY_USER_USERNAME&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">readonly&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">LDAP_READONLY_USER_MASSWORD&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">password&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Default Passwords to use, stored as a secret. If unset, passwords are auto-generated.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># You can override these at install time with&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># helm install openldap --set openldap.adminPassword=&amp;lt;passwd&amp;gt;,openldap.configPassword=&amp;lt;passwd&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">adminPassword&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">admin&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">configPassword&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">admin&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Custom openldap configuration files used to override default settings&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">customLdifFiles&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">0-initial-ous.ldif&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000;font-weight:bold">|-&lt;/span>&lt;span style="color:#8f5902;font-style:italic">
+&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> dn: ou=People,dc=tkestack,dc=io
+&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> objectClass: organizationalUnit
+&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> ou: People
+&lt;/span>&lt;span style="color:#8f5902;font-style:italic">
+&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> dn: ou=Group,dc=tkestack,dc=io
+&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> objectClass: organizationalUnit
+&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> ou: Group&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>这里默认使用 admin 作为 ldap 服务器的访问凭证，运行下面命令安装 openldap：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">helm install openldap openldap-1.2.7.tgz --values values-openldap.yaml
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>安装成功后通过下面命令获取到 openldap 的服 ClusterIP 地址：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">kubectl get service openldap
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>然后通过 ldapsearch 命令查询 ldap 服务是否正常：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">ldapsearch -x -H ldap://&lt;span style="color:#ce5c00;font-weight:bold">{&lt;/span>cluster_ip&lt;span style="color:#ce5c00;font-weight:bold">}&lt;/span>:389 -b &lt;span style="color:#000">dc&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>tkestack,dc&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>io -D &lt;span style="color:#4e9a06">&amp;#34;cn=admin,dc=tkestack,dc=io&amp;#34;&lt;/span> -w &lt;span style="color:#ce5c00;font-weight:bold">{&lt;/span>your password default is admin&lt;span style="color:#ce5c00;font-weight:bold">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>如果一切正常将会得到类似下面的返回内容：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">&lt;span style="color:#8f5902;font-style:italic"># extended LDIF&lt;/span>
+&lt;span style="color:#8f5902;font-style:italic">#&lt;/span>
+&lt;span style="color:#8f5902;font-style:italic"># LDAPv3&lt;/span>
+&lt;span style="color:#8f5902;font-style:italic"># base &amp;lt;dc=tkestack,dc=io&amp;gt; with scope subtree&lt;/span>
+&lt;span style="color:#8f5902;font-style:italic"># filter: (objectclass=*)&lt;/span>
+&lt;span style="color:#8f5902;font-style:italic"># requesting: ALL&lt;/span>
+&lt;span style="color:#8f5902;font-style:italic">#&lt;/span>
+&lt;span style="color:#8f5902;font-style:italic"># tkestack.io&lt;/span>
+dn: &lt;span style="color:#000">dc&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>tkestack,dc&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>io
+objectClass: top
+objectClass: dcObject
+objectClass: organization
+o: TKEStack Demo
+dc: tkestack
+...
+&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="使用-keycloak-管理-ldap">使用 keycloak 管理 LDAP&lt;/h2>
+&lt;p>本节将介绍通过 keycloak 图形界面控制 LDAP。首先下载 keycloak 的chart：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">wget https://tke-release-1251707795.cos.ap-guangzhou.myqcloud.com/charts/keycloak-16.1.0.tgz
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>现在完毕后将下面内容存储到 &lt;code>values-keycloak.yaml&lt;/code>：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#8f5902;font-style:italic"># Default values for keycloak.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># This is a YAML-formatted file.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Declare variables to be passed into your templates.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">replicaCount&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">image&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">repository&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">docker.io/jboss/keycloak&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">pullPolicy&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">IfNotPresent&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Overrides the image tag whose default is the chart appVersion.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">tag&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;16.1.0&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">service&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">type&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">NodePort&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">port&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">8443&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">nodePort&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">30443&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>这里默认使用 admin 作为 keycloak 的用户名密码。然后通过 helm 安装 keycloak：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">helm install keycloak keycloak-16.1.0.tgz --values values-keycloak.yaml
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>安装成功后可以通过&lt;code>https://{keycloak 所在 node IP}:30443&lt;/code>访问 keycloak 页面：&lt;/p>
+&lt;img alt="" width="100%" src="keycloak-home.png">
+&lt;p>然后进入 admin 登录界面使用 keycloak admin 用户登录：&lt;/p>
+&lt;img alt="" width="100%" src="keycloak-login.png">
+&lt;p>成功登录 keycloak 之后我们可以在&lt;code>User Federation&lt;/code>中配置管理 LDAP：&lt;/p>
+&lt;img alt="" width="100%" src="keycloak-ldap-config.png">
+&lt;p>在配置过程中我们可以通过&lt;code>Test connection&lt;/code>和&lt;code>Test authentication&lt;/code>测试配置是否有效。完成配置和我们就可以在 keycloak 中创建用户并同步到 LDAP 服务器。这里通过&lt;code>Users&lt;/code>中添加用户：&lt;/p>
+&lt;img alt="" width="100%" src="keycloak-ldap-ldapadmin.png">
+&lt;p>这里注意一定要配置&lt;code>Email&lt;/code>信息。创建成功后我们在用户的&lt;code>Credentials&lt;/code> 中配置用户密码：&lt;/p>
+&lt;img alt="" width="100%" src="keycloak-ldap-ldapadmin-credential.png">
+&lt;p>如果一切正常，此时用户信息应该已经同步到了 LDAP 服务器，我们可以通过以下命令进行检查：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">ldapsearch -x -H ldap://&lt;span style="color:#ce5c00;font-weight:bold">{&lt;/span>cluster_ip&lt;span style="color:#ce5c00;font-weight:bold">}&lt;/span>:389 -b &lt;span style="color:#000">dc&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>tkestack,dc&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>io -D &lt;span style="color:#4e9a06">&amp;#34;cn=admin,dc=tkestack,dc=io&amp;#34;&lt;/span> -w &lt;span style="color:#ce5c00;font-weight:bold">{&lt;/span>your password default is admin&lt;span style="color:#ce5c00;font-weight:bold">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>我们在返回结果中可以得到该用户信息：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">...
+&lt;span style="color:#8f5902;font-style:italic"># ldapadmin, People, tkestack.io&lt;/span>
+dn: &lt;span style="color:#000">uid&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>ldapadmin,ou&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>People,dc&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>tkestack,dc&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>io
+uid: ldapadmin
+objectClass: inetOrgPerson
+objectClass: organizationalPerson
+mail: ldapadmin@example.com
+sn:: &lt;span style="color:#000">IA&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">==&lt;/span>
+cn:: &lt;span style="color:#000">IA&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">==&lt;/span>
+userPassword:: &lt;span style="color:#000">YWRtaW4&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>
+...
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>除了用户信息，我们也可以通过 keycloak 添加 group 信息到 LDAP，这里我们需要在&lt;code>LDAP&lt;/code>的&lt;code>Mappers&lt;/code>中创建一个 group mapper：&lt;/p>
+&lt;img alt="" width="100%" src="keycloak-ldap-config-group.png">
+&lt;p>创建成功后我们可以将已经创建的用户添加到此 group 中：&lt;/p>
+&lt;img alt="" width="100%" src="keycloak-ldap-join-group.png">
+&lt;p>再执行下列命令：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">ldapsearch -x -H ldap://&lt;span style="color:#ce5c00;font-weight:bold">{&lt;/span>cluster_ip&lt;span style="color:#ce5c00;font-weight:bold">}&lt;/span>:389 -b &lt;span style="color:#000">dc&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>tkestack,dc&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>io -D &lt;span style="color:#4e9a06">&amp;#34;cn=admin,dc=tkestack,dc=io&amp;#34;&lt;/span> -w &lt;span style="color:#ce5c00;font-weight:bold">{&lt;/span>your password default is admin&lt;span style="color:#ce5c00;font-weight:bold">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>将得到我们刚刚添加的 group 信息：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">...
+&lt;span style="color:#8f5902;font-style:italic"># test, Group, tkestack.io&lt;/span>
+dn: &lt;span style="color:#000">cn&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>test,ou&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>Group,dc&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>tkestack,dc&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>io
+objectClass: groupOfNames
+cn: &lt;span style="color:#204a87">test&lt;/span>
+member: &lt;span style="color:#000">cn&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>empty-membership-placeholder
+member: &lt;span style="color:#000">uid&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>ldapadmin,ou&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>People,dc&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>tkestack,dc&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>io
+...
+&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="tke-auth-与-ldap-的集成">tke-auth 与 LDAP 的集成&lt;/h2>
+&lt;p>本节将介绍 tke-auth 如何与 LDAP 进行集成，并通过 LDAP 用户登录管理 TKEStack 平台。&lt;/p>
+&lt;p>首先我们将 TKEStack 默认的 identityprovider 进行备份：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">kubectl get identityproviders.auth.tkestack.io default -o yaml &amp;gt; default.identityproviders.bak
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>然后将 LDAP 相关的配置保存到&lt;code>ldap.json&lt;/code>中：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-json" data-lang="json">&lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;host&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;openldap.default:389&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;insecureNoSSL&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;bindDN&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;cn=admin,dc=tkestack,dc=io&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;bindPW&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;admin&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;usernamePrompt&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;User name&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;userSearch&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;baseDN&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;ou=People,dc=tkestack,dc=io&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;filter&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;(objectClass=organizationalPerson)&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;username&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;uid&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;idAttr&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;DN&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;emailAttr&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;mail&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;nameAttr&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;uid&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;preferredUsernameAttr&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;uid&amp;#34;&lt;/span>
+&lt;span style="color:#000;font-weight:bold">},&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;groupSearch&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;baseDN&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;ou=Group,dc=tkestack,dc=io&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;filter&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;(objectClass=groupOfNames)&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;userAttr&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;DN&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;groupAttr&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;member&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;nameAttr&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;cn&amp;#34;&lt;/span>
+&lt;span style="color:#000;font-weight:bold">}&lt;/span>
+&lt;span style="color:#000;font-weight:bold">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>使用该文件创建 ConfigMap：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">kubectl create cm -n tke ldap --from-file ldap.json
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>创建成功后我们需要将此 ConfigMap 加载到 tke-auth-api 组件中：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">kubectl edit -n tke deployments.apps tke-auth-api
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>添加下面的内容：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#000">...&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">volumeMounts&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">...&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#204a87;font-weight:bold">mountPath&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">/app/ldap&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">ldap-volume&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">volumes&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">...&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#204a87;font-weight:bold">configMap&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">defaultMode&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">420&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">ldap&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">ldap-volume&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#000">...&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>修改成功后我们需要修改 tke-auth-api 的 ConfigMap，使得其能够创建识别 ldap identityprovider：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">kubectl edit -n tke cm tke-auth-api
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>添加下面内容到 tke-auth-api.toml 文件中：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">tke-auth-api.toml&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000;font-weight:bold">|&lt;/span>&lt;span style="color:#8f5902;font-style:italic">
+&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> ....
+&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> [auth]
+&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> # 指定ldap类型的idp
+&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> init_tenant_type = &amp;#34;ldap&amp;#34;
+&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> # tenant id，需要控制global集群需要是default
+&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> init_tenant_id = &amp;#34;default&amp;#34;
+&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> # 预设的特权用户，配置一个ldap中存在的用户
+&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> init_idp_administrators = [&amp;#34;ldapadmin&amp;#34;]
+&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> # ldap 配置路径
+&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> ldap_config_file = &amp;#34;/app/ldap/ldap.json&amp;#34;
+&lt;/span>&lt;span style="color:#8f5902;font-style:italic"> ...&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>修改成功后我们需要删除现有的默认 identityprovider，并重建 tke-auth-api：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">kubectl delete identityproviders.auth.tkestack.io default
+kubectl delete pod -n tke tke-auth-api-xxx
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>待重建完成后 ldap 的 identityprovider 将会被自动创建，可以通过下列命令进行验证：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">kubectl get identityproviders.auth.tkestack.io default -o yaml
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>如果正常我们将得到类似下面的结果：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">apiVersion: auth.tkestack.io/v1
+kind: IdentityProvider
+metadata:
+creationTimestamp: &lt;span style="color:#4e9a06">&amp;#34;2021-12-30T02:51:34Z&amp;#34;&lt;/span>
+name: default
+resourceVersion: &lt;span style="color:#4e9a06">&amp;#34;808829&amp;#34;&lt;/span>
+uid: b8c87fd2-824c-44a5-962e-f821ddfa567c
+spec:
+administrators:
+- ldapadmin
+config: &lt;span style="color:#4e9a06">&amp;#39;{&amp;#34;host&amp;#34;:&amp;#34;openldap.default:389&amp;#34;,&amp;#34;insecureNoSSL&amp;#34;:true,&amp;#34;insecureSkipVerify&amp;#34;:false,&amp;#34;startTLS&amp;#34;:false,&amp;#34;rootCA&amp;#34;:&amp;#34;&amp;#34;,&amp;#34;clientCert&amp;#34;:&amp;#34;&amp;#34;,&amp;#34;clientKey&amp;#34;:&amp;#34;&amp;#34;,&amp;#34;rootCAData&amp;#34;:null,&amp;#34;bindDN&amp;#34;:&amp;#34;cn=admin,dc=tkestack,dc=io&amp;#34;,&amp;#34;bindPW&amp;#34;:&amp;#34;admin&amp;#34;,&amp;#34;usernamePrompt&amp;#34;:&amp;#34;User
+&lt;/span>&lt;span style="color:#4e9a06"> name&amp;#34;,&amp;#34;userSearch&amp;#34;:{&amp;#34;baseDN&amp;#34;:&amp;#34;ou=People,dc=tkestack,dc=io&amp;#34;,&amp;#34;filter&amp;#34;:&amp;#34;(objectClass=organizationalPerson)&amp;#34;,&amp;#34;username&amp;#34;:&amp;#34;uid&amp;#34;,&amp;#34;scope&amp;#34;:&amp;#34;&amp;#34;,&amp;#34;idAttr&amp;#34;:&amp;#34;DN&amp;#34;,&amp;#34;emailAttr&amp;#34;:&amp;#34;mail&amp;#34;,&amp;#34;nameAttr&amp;#34;:&amp;#34;uid&amp;#34;,&amp;#34;preferredUsernameAttr&amp;#34;:&amp;#34;uid&amp;#34;,&amp;#34;emailSuffix&amp;#34;:&amp;#34;&amp;#34;},&amp;#34;groupSearch&amp;#34;:{&amp;#34;baseDN&amp;#34;:&amp;#34;ou=Group,dc=tkestack,dc=io&amp;#34;,&amp;#34;filter&amp;#34;:&amp;#34;(objectClass=groupOfNames)&amp;#34;,&amp;#34;scope&amp;#34;:&amp;#34;&amp;#34;,&amp;#34;userAttr&amp;#34;:&amp;#34;DN&amp;#34;,&amp;#34;groupAttr&amp;#34;:&amp;#34;member&amp;#34;,&amp;#34;userMatchers&amp;#34;:null,&amp;#34;nameAttr&amp;#34;:&amp;#34;cn&amp;#34;}}&amp;#39;&lt;/span>
+name: default
+type: ldap
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>此时我们已经完成了 tke-auth 和 LDAP 的集成工作，我们可以通过下面的命令查询 LDAP 的用户和 group：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">kubectl get user --field-selector&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>spec.tenantID&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>default
+&lt;span style="color:#8f5902;font-style:italic"># NAME CREATED AT&lt;/span>
+&lt;span style="color:#8f5902;font-style:italic"># test 0001-01-01T00:00:00Z&lt;/span>
+kubectl get group --field-selector&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>spec.tenantID&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>default
+&lt;span style="color:#8f5902;font-style:italic"># NAME CREATED AT&lt;/span>
+&lt;span style="color:#8f5902;font-style:italic"># ldapadmin 0001-01-01T00:00:00Z&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>此时我们可以使用 LDAP 的用户登录管理 TKEStack：&lt;/p>
+&lt;img alt="" width="100%" src="tkestack-home.png"></description></item><item><title>Blog: TKEStack 容器混合云能力介绍（2）：打破网络边界</title><link>/web/zh/blog/2021/12/20/hybrid-cloud-introduction-2/</link><pubDate>Mon, 20 Dec 2021 00:00:00 +0000</pubDate><guid>/web/zh/blog/2021/12/20/hybrid-cloud-introduction-2/</guid><description>
 &lt;p>&lt;strong>Author&lt;/strong>: LeoRyu&lt;/p>
 &lt;p>&lt;em>TKEStack 提供了多集群管理能力，其中导入集群功能通过推送模式由 TKEStack 管控集群（global cluster）直连第三方集群的 api-server 进而统一纳管部署在 IDC，公有云或边缘的第三方集群。 但在实际生产环境中， 管控集群和第三方集群之间的直连往往会出现很多阻碍：或是不在同一个二层网络下，或是第三方集群在防火墙/NAT之后，或是第三方集群在网络策略上不允许有入站网络传输，在这些场景下, TKEStack难以直连第三方集群 api-server, 导入集群的能力无法发挥。针对这一问题本文将介绍 TKEStack 如何借助腾讯云原生分布式云中心注册集群的功能打破网络边界的限制，将网络环境相对隔离的集群纳入到 TKEStack 的管控面，进行统一管控。&lt;/em>&lt;/p>
 &lt;h2 id="tkestack-的导入集群功能">TKEStack 的导入集群功能&lt;/h2>
