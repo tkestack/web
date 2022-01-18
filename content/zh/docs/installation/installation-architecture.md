@@ -13,7 +13,7 @@ TKEStack 产品架构如下图所示：
 
 <!-- TODO： need update -->
 
-![](./images/tkestackhighlevelarchitecture-2x.png)
+![](../images/tkestackhighlevelarchitecture-2x.png)
 
 ## 架构说明
 
