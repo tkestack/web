@@ -1,3 +1,12 @@
+---
+title: "快速入门"
+linkTitle: "快速入门"
+date: 2022-01-18
+description: >
+  快速入门
+weight: 1
+---
+
 # 快速入门
 
 ## 教程介绍
