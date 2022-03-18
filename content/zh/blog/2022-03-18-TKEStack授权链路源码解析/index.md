@@ -1,4 +1,17 @@
-# 名词解释
+---
+layout: blog
+title: "TKEStack授权链路源码解析"
+date: 2022-03-18
+# slug of this blog url
+slug: tkestack-casbin-authz
+---
+
+**Author**: caryxychen
+
+[TKEStack](https://github.com/tkestack/tke) 是一个开源项目，它为在生产环境中部署容器的组织提供了一个容器管理平台。TKEStack 让您可以轻松地在任何地方运行 Kubernetes、满足 IT 需求并为 DevOps 团队赋能。
+本文将详细分析的TKEStack授权链路。
+
+## 名词解释
 ![image.png](./tkestack权限模型.png)
 - Tenant
    - 租户，类似于公有云主账号
@@ -35,7 +48,7 @@
       - 若用户、用户组是通过Role关联了某些Policy，则权限的作用范围由Role的作用域决定
    - [CRD](https://github.com/tkestack/tke/blob/master/api/auth/types.go#L490)
    
-# [Casbin基础](https://casbin.org/docs/zh-CN/overview)
+## [Casbin基础](https://casbin.org/docs/zh-CN/overview)
 Casbin 可以：
    - 支持自定义请求的格式，默认的请求格式为{subject, object, action}。
    - 具有访问控制模型model和策略policy两个核心概念。
@@ -47,7 +60,7 @@ Casbin 不能：
    - 身份认证 authentication（即验证用户的用户名和密码），Casbin 只负责访问控制。应该有其他专门的组件负责身份认证，然后由 Casbin 进行访问控制，二者是相互配合的关系。
    - 管理用户列表或角色列表。 Casbin 认为由项目自身来管理用户、角色列表更为合适， 用户通常有他们的密码，但是 Casbin 的设计思想并不是把它作为一个存储密码的容器。 而是存储RBAC方案中用户和角色之间的映射关系。
 
-## [PERM](https://casbin.org/docs/zh-CN/how-it-works)
+### [PERM](https://casbin.org/docs/zh-CN/how-it-works)
 在 Casbin 中, 访问控制模型被抽象为基于 **PERM (Policy, Effect, Request, Matcher) **的一个文件。 PERM模式由四个基础（政策、效果、请求、匹配）组成，描述了资源与用户之间的关系。
 
 Casbin需要两份文件：
@@ -66,7 +79,7 @@ Casbin需要两份文件：
    - alice可以读取data1
    - bob可以编写data2
 
-## [RBAC](https://casbin.org/docs/zh-CN/rbac)
+### [RBAC](https://casbin.org/docs/zh-CN/rbac)
 - 模型定义
    - ![image.png](./casbin-3.png)
    - 分组定义，描述了**用户与角色（分组）之间的关系**
@@ -78,7 +91,7 @@ Casbin需要两份文件：
    - alice属于data2_admin角色（分组），因此alice也具备了data2资源的read、write权限
    - bob只有data2资源的write权限
 
-## [域内RBAC](https://casbin.org/docs/zh-CN/rbac-with-domains)
+### [域内RBAC](https://casbin.org/docs/zh-CN/rbac-with-domains)
 - 模型定义
    - ![image.png](./casbin-5.png)
    - 域内角色定义，**用户，角色，域的分组关系**
@@ -89,7 +102,7 @@ Casbin需要两份文件：
    - **alice用户**在**domain1作用域**具有**admin角色**权限，但不具备**domain2作用域**内资源的操作权限
    - **bob用户**在**domain2作用域**具有**admin角色**权限，但不具备**domain1作用域**内资源的操作权限
 
-## [角色继承](https://casbin.org/docs/zh-CN/rbac#%E5%A6%82%E4%BD%95%E5%8C%BA%E5%88%86%E7%94%A8%E6%88%B7%E5%92%8C%E8%A7%92%E8%89%B2%EF%BC%9F)
+### [角色继承](https://casbin.org/docs/zh-CN/rbac#%E5%A6%82%E4%BD%95%E5%8C%BA%E5%88%86%E7%94%A8%E6%88%B7%E5%92%8C%E8%A7%92%E8%89%B2%EF%BC%9F)
 - 模型定义
    - ![image.png](./casbin-7.png)
 - 策略文件
@@ -116,8 +129,8 @@ Casbin需要两份文件：
 - 即描述了用户、用户组、角色的三层继承关系
    - ![image.png](./casbin-8.png)
 
-# TkeStack Authz源码解析
-## Casbin模型定义
+## TkeStack Authz源码解析
+### Casbin模型定义
 ```bash
 [request_definition]
 r = sub, dom, obj, act
@@ -140,7 +153,7 @@ m = g(r.sub, p.sub, r.dom) && keyMatchCustom(r.obj, p.obj) && keyMatchCustom(r.a
 - 自定义的匹配函数[keyMatchCustom](https://github.com/tkestack/tke/blob/9a001b7065aab6553d3310ddf748fb8abe9fb684/cmd/tke-auth-api/app/config/config.go#L413)
 - 准入规则：策略集合中至少存在一条规则为allow，且不存在deny
 
-## tke-auth-api授权解析
+### tke-auth-api授权解析
 ![image.png](./k8s-3a.png)
 - tke-auth-api是一个Aggregate ApiServer
 - 请求[执行链](https://github.com/tkestack/tke/blob/master/pkg/apiserver/handler/chain.go#L37)上包含：Authentication（认证）、Audit（审计）、TKEAuthorization（审计）
@@ -166,7 +179,7 @@ m = g(r.sub, p.sub, r.dom) && keyMatchCustom(r.obj, p.obj) && keyMatchCustom(r.a
 
   **用户直接向tke-auth-api提交Rule资源？？？太底层，没有高层抽象（用户、用户组、角色等）**
 
-## tke-auth-controller
+### tke-auth-controller
 ![image.png](./controller.png)
 包含的Controller
 
@@ -228,7 +241,7 @@ g, usr-xxx2, grp-xxx, *
 g, usr-yyy, grp-yyy, *
 ```
 
-## 示例
+### 示例
 TKEStack 通过自定义的 CRD：Policy 对象存储鉴权规则。其中 Policy 对象类似于 Kubernetes 中的 Clusterrole 或者 Role 对象，以近似于腾讯 CAM 语法的方式，定义了鉴权规则：
 ![image.png](./get-policy.png)
 ```yaml
@@ -376,6 +389,6 @@ Rule 对象可以分为两类：spec.ptype==p 和 spec.ptype==g，分别对应 C
 
 tke-auth-controller 根据 Casbin 定义的 Adapter Interface，通过 tke-auth-api 的 Client 和 Rule 对象的 Lister 对象构建了一个 Adapt。通过 Adapt 创建了 Casbin 的客户端，实现 Kubernetes 同 Casbin 框架的交互。
 
-## 其他模块的授权链路
+### 其他模块的授权链路
 通过在[WithTKEAuthorization](https://github.com/tkestack/tke/blob/9a001b7065aab6553d3310ddf748fb8abe9fb684/pkg/auth/handler/authz/handler.go#L62)阶段，通过Webhook的方式，访问tke-auth-api的[/authz接口](https://github.com/tkestack/tke/blob/9a001b7065aab6553d3310ddf748fb8abe9fb684/pkg/auth/route/auth.go#L34)
 ![image.png](./authz.png)
