@@ -1,4 +1,444 @@
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Tkestack – TKEStack</title><link>/web/zh/</link><description>Recent content in TKEStack on Tkestack</description><generator>Hugo -- gohugo.io</generator><atom:link href="/web/zh/index.xml" rel="self" type="application/rss+xml"/><item><title>Blog: 原生k8s集群上通过chart安装tke-auth、tke-platform、tke-gateway</title><link>/web/zh/blog/2022/02/23/tkestack-installer-chart/</link><pubDate>Wed, 23 Feb 2022 00:00:00 +0000</pubDate><guid>/web/zh/blog/2022/02/23/tkestack-installer-chart/</guid><description>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Tkestack – TKEStack</title><link>/web/zh/</link><description>Recent content in TKEStack on Tkestack</description><generator>Hugo -- gohugo.io</generator><atom:link href="/web/zh/index.xml" rel="self" type="application/rss+xml"/><item><title>Blog: TKEStack授权链路源码解析</title><link>/web/zh/blog/2022/03/18/tkestack-casbin-authz/</link><pubDate>Fri, 18 Mar 2022 00:00:00 +0000</pubDate><guid>/web/zh/blog/2022/03/18/tkestack-casbin-authz/</guid><description>
+&lt;p>&lt;strong>Author&lt;/strong>: caryxychen&lt;/p>
+&lt;p>&lt;a href="https://github.com/tkestack/tke">TKEStack&lt;/a> 是一个开源项目，它为在生产环境中部署容器的组织提供了一个容器管理平台。TKEStack 让您可以轻松地在任何地方运行 Kubernetes、满足 IT 需求并为 DevOps 团队赋能。
+本文将详细分析的TKEStack授权链路。&lt;/p>
+&lt;h2 id="名词解释">名词解释&lt;/h2>
+&lt;p>&lt;img src="./tkestack%E6%9D%83%E9%99%90%E6%A8%A1%E5%9E%8B.png" alt="image.png">&lt;/p>
+&lt;ul>
+&lt;li>Tenant
+&lt;ul>
+&lt;li>租户，类似于公有云主账号&lt;/li>
+&lt;li>TkeStack提供了多租户隔离的能力&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Platform
+&lt;ul>
+&lt;li>平台级，即拥有全局的作用范围&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Project
+&lt;ul>
+&lt;li>项目级，将资源、操作限定到某个项目维度下&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>User
+&lt;ul>
+&lt;li>用户，定义一个成员的最基础的认证信息&lt;/li>
+&lt;li>例如小明、小李是两个用户&lt;/li>
+&lt;li>用户属于某个租户&lt;/li>
+&lt;li>用户是平台级资源&lt;/li>
+&lt;li>&lt;a href="https://github.com/tkestack/tke/blob/master/api/auth/types.go#L201">CRD&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Group
+&lt;ul>
+&lt;li>用户组，将一组用户关联到一个分组&lt;/li>
+&lt;li>例如小明和小李都是容器组的同事&lt;/li>
+&lt;li>用户组属于某个租户&lt;/li>
+&lt;li>用户组是平台级资源&lt;/li>
+&lt;li>&lt;a href="https://github.com/tkestack/tke/blob/master/api/auth/types.go#L240">CRD&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Role
+&lt;ul>
+&lt;li>角色，一个中间态概念，关联了一组权限策略（Policy），并分配到用户、用户组上&lt;/li>
+&lt;li>例如小明是&lt;strong>研发&lt;/strong>角色，小李是&lt;strong>产品&lt;/strong>角色&lt;/li>
+&lt;li>角色可以是平台级（Platform），也可以是项目级（Project）
+&lt;ul>
+&lt;li>若将一个平台级的角色绑定到某个用户、用户组上，则用户、用户组具备了该角色所绑定了权限策略的平台级权限&lt;/li>
+&lt;li>若将一个项目级的角色绑定到某个用户、用户组上，则用户、用户组具备了该角色所绑定了权限策略的项目级权限&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>角色属于某个租户&lt;/li>
+&lt;li>&lt;a href="https://github.com/tkestack/tke/blob/master/api/auth/types.go#L744">CRD&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Policy
+&lt;ul>
+&lt;li>权限策略，&lt;a href="https://github.com/tkestack/tke/blob/master/docs/guide/zh-CN/FAQ/Authority/%E5%A6%82%E4%BD%95%E8%AE%BE%E7%BD%AE%E8%87%AA%E5%AE%9A%E4%B9%89%E7%AD%96%E7%95%A5.md">定义了Resouces、Actions、Effect三元组&lt;/a>&lt;/li>
+&lt;li>权限策略可以是平台级（Platform），也可以是项目级（Project）
+&lt;ul>
+&lt;li>通过**(un)binding**将用户、用户组与**平台级Policy**绑定，这样用户、用户组具备了平台级的操作权限&lt;/li>
+&lt;li>通过&lt;strong>project(un)Binding&lt;/strong>将用户、用户组与&lt;strong>项目级Policy&lt;/strong>绑定，这样用户、用户组只在该项目下具备权限&lt;/li>
+&lt;li>若用户、用户组是通过Role关联了某些Policy，则权限的作用范围由Role的作用域决定&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>&lt;a href="https://github.com/tkestack/tke/blob/master/api/auth/types.go#L490">CRD&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ul>
+&lt;h2 id="casbin基础httpscasbinorgdocszh-cnoverview">&lt;a href="https://casbin.org/docs/zh-CN/overview">Casbin基础&lt;/a>&lt;/h2>
+&lt;p>Casbin 可以：&lt;/p>
+&lt;ul>
+&lt;li>支持自定义请求的格式，默认的请求格式为{subject, object, action}。&lt;/li>
+&lt;li>具有访问控制模型model和策略policy两个核心概念。&lt;/li>
+&lt;li>支持RBAC中的多层角色继承，不止主体可以有角色，资源也可以具有角色。&lt;/li>
+&lt;li>支持内置的超级用户 例如：root 或 administrator。超级用户可以执行任何操作而无需显式的权限声明。&lt;/li>
+&lt;li>支持多种内置的操作符，如 keyMatch，方便对路径式的资源进行管理，如 /foo/bar 可以映射到 /foo*&lt;/li>
+&lt;/ul>
+&lt;p>Casbin 不能：&lt;/p>
+&lt;ul>
+&lt;li>身份认证 authentication（即验证用户的用户名和密码），Casbin 只负责访问控制。应该有其他专门的组件负责身份认证，然后由 Casbin 进行访问控制，二者是相互配合的关系。&lt;/li>
+&lt;li>管理用户列表或角色列表。 Casbin 认为由项目自身来管理用户、角色列表更为合适， 用户通常有他们的密码，但是 Casbin 的设计思想并不是把它作为一个存储密码的容器。 而是存储RBAC方案中用户和角色之间的映射关系。&lt;/li>
+&lt;/ul>
+&lt;h3 id="permhttpscasbinorgdocszh-cnhow-it-works">&lt;a href="https://casbin.org/docs/zh-CN/how-it-works">PERM&lt;/a>&lt;/h3>
+&lt;p>在 Casbin 中, 访问控制模型被抽象为基于 **PERM (Policy, Effect, Request, Matcher) **的一个文件。 PERM模式由四个基础（政策、效果、请求、匹配）组成，描述了资源与用户之间的关系。&lt;/p>
+&lt;p>Casbin需要两份文件：&lt;/p>
+&lt;ul>
+&lt;li>模型文件，定义了PERM，描述了权限控制模型的Schema
+&lt;ul>
+&lt;li>&lt;a href="https://casbin.org/docs/zh-CN/syntax-for-models">https://casbin.org/docs/zh-CN/syntax-for-models&lt;/a>&lt;/li>
+&lt;li>&lt;img src="./casbin-1.png" alt="image.png">&lt;/li>
+&lt;li>r，描述了请求的schema
+&lt;ul>
+&lt;li>sub，主体对象，即请求发起方是谁&lt;/li>
+&lt;li>obj，资源对象，即被操作的资源是什么&lt;/li>
+&lt;li>act，动作，即触发什么类型的操作（CRUD）&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>p，定义了策略文件的格式&lt;/li>
+&lt;li>m，匹配器，定义了请求与策略的匹配规则，即策略文件中的哪些策略能够被命中&lt;/li>
+&lt;li>e，效果器，通过被命中的策略，计算出最终的准入结果（Allow还是Deny）&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>策略文件，根据模型文件中的p，填充用户自定义的授权规则
+&lt;ul>
+&lt;li>&lt;img src="./casbin-2.png" alt="image.png">&lt;/li>
+&lt;li>alice可以读取data1&lt;/li>
+&lt;li>bob可以编写data2&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ul>
+&lt;h3 id="rbachttpscasbinorgdocszh-cnrbac">&lt;a href="https://casbin.org/docs/zh-CN/rbac">RBAC&lt;/a>&lt;/h3>
+&lt;ul>
+&lt;li>模型定义
+&lt;ul>
+&lt;li>&lt;img src="./casbin-3.png" alt="image.png">&lt;/li>
+&lt;li>分组定义，描述了&lt;strong>用户与角色（分组）之间的关系&lt;/strong>&lt;/li>
+&lt;li>匹配定义，g(r.sub, p.sub)描述了，&lt;strong>请求的主体与策略里的主体，需要在同一个角色（分组）里&lt;/strong>&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>策略文件
+&lt;ul>
+&lt;li>&lt;img src="./casbin-4.png" alt="image.png">&lt;/li>
+&lt;li>alice对data1资源有read权限&lt;/li>
+&lt;li>data2_admin角色对data2资源有read、write权限&lt;/li>
+&lt;li>alice属于data2_admin角色（分组），因此alice也具备了data2资源的read、write权限&lt;/li>
+&lt;li>bob只有data2资源的write权限&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ul>
+&lt;h3 id="域内rbachttpscasbinorgdocszh-cnrbac-with-domains">&lt;a href="https://casbin.org/docs/zh-CN/rbac-with-domains">域内RBAC&lt;/a>&lt;/h3>
+&lt;ul>
+&lt;li>模型定义
+&lt;ul>
+&lt;li>&lt;img src="./casbin-5.png" alt="image.png">&lt;/li>
+&lt;li>域内角色定义，&lt;strong>用户，角色，域的分组关系&lt;/strong>&lt;/li>
+&lt;li>匹配规则，请求的作用域内的请求主体，应该与策略文件中的主体在一个分组内&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>策略文件
+&lt;ul>
+&lt;li>&lt;img src="./casbin-6.png" alt="image.png">&lt;/li>
+&lt;li>&lt;strong>admin角色&lt;/strong>在&lt;strong>domain1、domain2作用域内&lt;/strong>，对&lt;strong>data1、data2资源&lt;/strong>具备&lt;strong>read、write权限&lt;/strong>&lt;/li>
+&lt;li>&lt;strong>alice用户&lt;/strong>在&lt;strong>domain1作用域&lt;/strong>具有&lt;strong>admin角色&lt;/strong>权限，但不具备&lt;strong>domain2作用域&lt;/strong>内资源的操作权限&lt;/li>
+&lt;li>&lt;strong>bob用户&lt;/strong>在&lt;strong>domain2作用域&lt;/strong>具有&lt;strong>admin角色&lt;/strong>权限，但不具备&lt;strong>domain1作用域&lt;/strong>内资源的操作权限&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ul>
+&lt;h3 id="角色继承httpscasbinorgdocszh-cnrbace5a682e4bd95e58cbae58886e794a8e688b7e5928ce8a792e889b2efbc9f">&lt;a href="https://casbin.org/docs/zh-CN/rbac#%E5%A6%82%E4%BD%95%E5%8C%BA%E5%88%86%E7%94%A8%E6%88%B7%E5%92%8C%E8%A7%92%E8%89%B2%EF%BC%9F">角色继承&lt;/a>&lt;/h3>
+&lt;ul>
+&lt;li>模型定义
+&lt;ul>
+&lt;li>&lt;img src="./casbin-7.png" alt="image.png">&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>策略文件
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">p, role::admin, domain, data1, &lt;span style="color:#204a87">read&lt;/span>
+p, role::admin, domain, data1, write
+p, role::reader, domain, data1, &lt;span style="color:#204a87">read&lt;/span>
+g, user::alice, group::develop, domain
+g, user::bob, group::develop, domain
+g, user::tony, group::product, domain
+g, group::develop, role::admin, domain
+g, group::product, role::reader, domain
+&lt;/code>&lt;/pre>&lt;/div>&lt;ul>
+&lt;li>&lt;strong>用户alice、用户bob&lt;/strong>在&lt;strong>domain作用域内&lt;/strong>属于&lt;strong>用户组develop&lt;/strong>&lt;/li>
+&lt;li>&lt;strong>用户bob&lt;/strong>在&lt;strong>domain作用域&lt;/strong>内属于&lt;strong>用户组produc&lt;/strong>t&lt;/li>
+&lt;li>&lt;strong>用户组develop&lt;/strong>在&lt;strong>domain作用域&lt;/strong>内分配了&lt;strong>admin角色&lt;/strong>&lt;/li>
+&lt;li>&lt;strong>用户组product&lt;/strong>在&lt;strong>domain作用域&lt;/strong>内分配了&lt;strong>reader角色&lt;/strong>&lt;/li>
+&lt;li>&lt;strong>admin角色&lt;/strong>在&lt;strong>domain作用域&lt;/strong>内对&lt;strong>data1资源&lt;/strong>具备&lt;strong>read、write操作&lt;/strong>的权限&lt;/li>
+&lt;li>&lt;strong>reader角色&lt;/strong>在&lt;strong>domain作用域&lt;/strong>内对&lt;strong>data1资源&lt;/strong>具备&lt;strong>read的权限&lt;/strong>&lt;/li>
+&lt;li>&lt;strong>用户alice、bob&lt;/strong>在&lt;strong>domain作用域&lt;/strong>内对&lt;strong>data1资源&lt;/strong>具备&lt;strong>read、write操作&lt;/strong>的权限&lt;/li>
+&lt;li>&lt;strong>用户tony&lt;/strong>在&lt;strong>domain作用域内&lt;/strong>对&lt;strong>data1资源&lt;/strong>具备&lt;strong>read&lt;/strong>的权限&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>即描述了用户、用户组、角色的三层继承关系
+&lt;ul>
+&lt;li>&lt;img src="./casbin-8.png" alt="image.png">&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ul>
+&lt;h2 id="tkestack-authz源码解析">TkeStack Authz源码解析&lt;/h2>
+&lt;h3 id="casbin模型定义">Casbin模型定义&lt;/h3>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">&lt;span style="color:#ce5c00;font-weight:bold">[&lt;/span>request_definition&lt;span style="color:#ce5c00;font-weight:bold">]&lt;/span>
+&lt;span style="color:#000">r&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> sub, dom, obj, act
+&lt;span style="color:#ce5c00;font-weight:bold">[&lt;/span>policy_definition&lt;span style="color:#ce5c00;font-weight:bold">]&lt;/span>
+&lt;span style="color:#000">p&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> sub, dom, obj, act, eft
+&lt;span style="color:#ce5c00;font-weight:bold">[&lt;/span>role_definition&lt;span style="color:#ce5c00;font-weight:bold">]&lt;/span>
+&lt;span style="color:#000">g&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> _, _, _
+&lt;span style="color:#ce5c00;font-weight:bold">[&lt;/span>policy_effect&lt;span style="color:#ce5c00;font-weight:bold">]&lt;/span>
+&lt;span style="color:#000">e&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> some&lt;span style="color:#ce5c00;font-weight:bold">(&lt;/span>where &lt;span style="color:#ce5c00;font-weight:bold">(&lt;/span>p.eft &lt;span style="color:#ce5c00;font-weight:bold">==&lt;/span> allow&lt;span style="color:#ce5c00;font-weight:bold">))&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">&amp;amp;&amp;amp;&lt;/span> !some&lt;span style="color:#ce5c00;font-weight:bold">(&lt;/span>where &lt;span style="color:#ce5c00;font-weight:bold">(&lt;/span>p.eft &lt;span style="color:#ce5c00;font-weight:bold">==&lt;/span> deny&lt;span style="color:#ce5c00;font-weight:bold">))&lt;/span>
+&lt;span style="color:#ce5c00;font-weight:bold">[&lt;/span>matchers&lt;span style="color:#ce5c00;font-weight:bold">]&lt;/span>
+&lt;span style="color:#000">m&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> g&lt;span style="color:#ce5c00;font-weight:bold">(&lt;/span>r.sub, p.sub, r.dom&lt;span style="color:#ce5c00;font-weight:bold">)&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">&amp;amp;&amp;amp;&lt;/span> keyMatchCustom&lt;span style="color:#ce5c00;font-weight:bold">(&lt;/span>r.obj, p.obj&lt;span style="color:#ce5c00;font-weight:bold">)&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">&amp;amp;&amp;amp;&lt;/span> keyMatchCustom&lt;span style="color:#ce5c00;font-weight:bold">(&lt;/span>r.act, p.act&lt;span style="color:#ce5c00;font-weight:bold">)&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;ul>
+&lt;li>&lt;a href="https://github.com/tkestack/tke/blob/9a001b7065aab6553d3310ddf748fb8abe9fb684/api/auth/types.go#L633">DefaultRuleModel&lt;/a>&lt;/li>
+&lt;li>域内RBAC&lt;/li>
+&lt;li>自定义的匹配函数&lt;a href="https://github.com/tkestack/tke/blob/9a001b7065aab6553d3310ddf748fb8abe9fb684/cmd/tke-auth-api/app/config/config.go#L413">keyMatchCustom&lt;/a>&lt;/li>
+&lt;li>准入规则：策略集合中至少存在一条规则为allow，且不存在deny&lt;/li>
+&lt;/ul>
+&lt;h3 id="tke-auth-api授权解析">tke-auth-api授权解析&lt;/h3>
+&lt;p>&lt;img src="./k8s-3a.png" alt="image.png">&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>tke-auth-api是一个Aggregate ApiServer&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>请求&lt;a href="https://github.com/tkestack/tke/blob/master/pkg/apiserver/handler/chain.go#L37">执行链&lt;/a>上包含：Authentication（认证）、Audit（审计）、TKEAuthorization（审计）&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>WithTKEAuthorization函数内调用&lt;a href="https://github.com/tkestack/tke/blob/master/pkg/auth/filter/filter.go#L145">Authorizer&lt;/a>对请求进行授权&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>构造Authorizer&lt;/p>
+&lt;ul>
+&lt;li>tke-auth-api config中&lt;a href="https://github.com/tkestack/tke/blob/9a001b7065aab6553d3310ddf748fb8abe9fb684/cmd/tke-auth-api/app/config/config.go#L164">初始化Aggregation Authorizer&lt;/a>&lt;/li>
+&lt;li>Aggregation Authorizer的&lt;a href="https://github.com/tkestack/tke/blob/9a001b7065aab6553d3310ddf748fb8abe9fb684/pkg/auth/authorization/aggregation/aggregation.go#L33">初始化逻辑&lt;/a>&lt;/li>
+&lt;li>Local Authorizer（&lt;a href="https://github.com/tkestack/tke/blob/9a001b7065aab6553d3310ddf748fb8abe9fb684/pkg/auth/authorization/aggregation/aggregation.go#L59">Casbin Authorizer&lt;/a>）&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>
+&lt;p>Casbin Authorizer的&lt;a href="https://github.com/tkestack/tke/blob/9a001b7065aab6553d3310ddf748fb8abe9fb684/pkg/auth/authorization/local/authorizer.go#L142">执行&lt;/a>&lt;/p>
+&lt;ul>
+&lt;li>参考：&lt;a href="https://casbin.org/docs/zh-CN/api-overview">Casbin API&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>
+&lt;p>tke-auth-api config中&lt;a href="https://github.com/tkestack/tke/blob/9a001b7065aab6553d3310ddf748fb8abe9fb684/cmd/tke-auth-api/app/config/config.go#L148">初始化&lt;/a>Casbin Enforcer（执行器）&lt;/p>
+&lt;ul>
+&lt;li>&lt;a href="https://github.com/tkestack/tke/blob/9a001b7065aab6553d3310ddf748fb8abe9fb684/cmd/tke-auth-api/app/config/config.go#L303">加载DefaultRuleModel&lt;/a>，但Casbin的Policy来自哪里？&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>
+&lt;p>tke-auth-api postStart中，执行Casbin &lt;a href="https://github.com/tkestack/tke/blob/master/pkg/auth/apiserver/apiserver.go#L233">Policy加载&lt;/a>&lt;/p>
+&lt;ul>
+&lt;li>构造Casbin &lt;a href="https://github.com/tkestack/tke/blob/master/pkg/auth/authorization/local/hook_adapter.go#L61">Adapter&lt;/a>&lt;/li>
+&lt;li>参考：&lt;a href="https://casbin.org/docs/zh-CN/adapters">Casbin Adapter&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>
+&lt;p>Casbin Policy的装载与存储&lt;/p>
+&lt;ul>
+&lt;li>&lt;a href="https://github.com/tkestack/tke/blob/master/pkg/auth/util/adapter.go#L72">装载&lt;/a>&lt;/li>
+&lt;li>&lt;a href="https://github.com/tkestack/tke/blob/master/pkg/auth/util/adapter.go#L107">存储&lt;/a>&lt;/li>
+&lt;li>&lt;a href="https://github.com/tkestack/tke/blob/master/pkg/auth/authorization/local/hook_adapter.go#L68">AutoLoad&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>
+&lt;p>Rule &lt;a href="https://github.com/tkestack/tke/blob/master/api/auth/types.go#L675">CRD&lt;/a>&lt;/p>
+&lt;ul>
+&lt;li>&lt;img src="./rule.png" alt="image.png">&lt;/li>
+&lt;li>&lt;img src="./load-policy.png" alt="image.png">&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>用户直接向tke-auth-api提交Rule资源？？？太底层，没有高层抽象（用户、用户组、角色等）&lt;/strong>&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;h3 id="tke-auth-controller">tke-auth-controller&lt;/h3>
+&lt;p>&lt;img src="./controller.png" alt="image.png">
+包含的Controller&lt;/p>
+&lt;ul>
+&lt;li>&lt;a href="https://github.com/tkestack/tke/blob/master/cmd/tke-auth-controller/app/controller.go#L50">https://github.com/tkestack/tke/blob/master/cmd/tke-auth-controller/app/controller.go#L50&lt;/a>&lt;/li>
+&lt;li>&lt;a href="https://github.com/tkestack/tke/blob/master/cmd/tke-auth-controller/app/auth.go#L60">https://github.com/tkestack/tke/blob/master/cmd/tke-auth-controller/app/auth.go#L60&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;p>&lt;img src="./tkestack%E6%9D%83%E9%99%90%E6%A8%A1%E5%9E%8B.png" alt="image.png">
+Controller的职责&lt;/p>
+&lt;ul>
+&lt;li>以Policy为核心，将Policy绑定到User、Group、Role上&lt;/li>
+&lt;li>将Policy以及Policy的绑定关系，翻译成Casbin的策略规则（p、g）&lt;/li>
+&lt;/ul>
+&lt;p>&lt;a href="https://github.com/tkestack/tke/blob/master/pkg/auth/controller/policy/policy_controller.go#L238">PolicyController&lt;/a>，watch &lt;a href="https://github.com/tkestack/tke/blob/9a001b7065aab6553d3310ddf748fb8abe9fb684/api/auth/types.go#L442">Policy资源&lt;/a>，并更新Casbin策略规则。&lt;a href="https://github.com/tkestack/tke/blob/master/docs/guide/zh-CN/FAQ/Authority/%E5%A6%82%E4%BD%95%E8%AE%BE%E7%BD%AE%E8%87%AA%E5%AE%9A%E4%B9%89%E7%AD%96%E7%95%A5.md#%E7%AD%96%E7%95%A5%E6%A0%B7%E4%BE%8B">示例&lt;/a>&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">p, pol-xxx, *, cluster:cls-123/deployment:deploy-123/*, get*, allow
+p, pol-xxx, *, cluster:cls-123/deployment:deploy-123/*, list*, allow
+p, pol-xxx, *, cluster:cls-123/deployment:deploy-123/*, watch*, allow
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>若Policy为Platform级别的，并且绑定到对应的User或Group上，则更新Casbin分组规则，示例：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">g, usr-xxx, pol-xxx, *
+g, grp-xxx, pol-xxx, *
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;a href="https://github.com/tkestack/tke/blob/master/pkg/auth/controller/projectpolicybinding/projectpolicybinding_controller.go#L75">ProjectPolicyController&lt;/a>，watch &lt;a href="https://github.com/tkestack/tke/blob/9a001b7065aab6553d3310ddf748fb8abe9fb684/api/auth/types.go#L533">ProjectPolicyBinding&lt;/a>资源，并更新Casbin分组规则。
+若该Policy为Project级别的，并且通过ProjectBinding绑定到对应的User或Group上，则更新Casbin分组规则，示例：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">g, usr-xxx, pol-xxx, pro-xxx
+g, grp-xxx, pol-xxx, pro-xxx
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;a href="https://github.com/tkestack/tke/blob/9a001b7065aab6553d3310ddf748fb8abe9fb684/pkg/auth/controller/role/role_controller.go#L72">RoleController&lt;/a>，watch &lt;a href="https://github.com/tkestack/tke/blob/9a001b7065aab6553d3310ddf748fb8abe9fb684/api/auth/types.go#L712">Role&lt;/a>资源，并更新Casbin分组规则（多层继承）。
+若将Role绑定（binding）到User或Group上，则更新Casbin的分组规则，示例：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">&lt;span style="color:#8f5902;font-style:italic">## 若role-xxx是platform范围的&lt;/span>
+g, usr-xxx, role-xxx, *
+g, grp-xxx, role-xxx, *
+&lt;span style="color:#8f5902;font-style:italic">## 若role-yyy是project-yyy范围的&lt;/span>
+g, usr-yyy, role-yyy, project-yyy
+g, grp-yyy, role-yyy, project-yyy
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>若将Role关联（policyBinding）到多个Policy，则更新Casbin的分组规则，示例：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">&lt;span style="color:#8f5902;font-style:italic">## 若role-xxx是platform范围的&lt;/span>
+g, role-xxx, pol-xxx, *
+g, role-xxx, pol-xxx2, *
+&lt;span style="color:#8f5902;font-style:italic">## 若role-yyy是project-yyy范围的&lt;/span>
+g, role-yyy, pol-yyy, project-yyy
+g, role-yyy, pol-yyy2, project-yyy
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;a href="https://github.com/tkestack/tke/blob/9a001b7065aab6553d3310ddf748fb8abe9fb684/pkg/auth/controller/group/group_controller.go#L78">GroupController&lt;/a>，watch &lt;a href="https://github.com/tkestack/tke/blob/9a001b7065aab6553d3310ddf748fb8abe9fb684/api/auth/types.go#L134">LocalGroup&lt;/a>资源，并根据Group对应的User更新Casbin分组规则，示例：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">g, usr-xxx, grp-xxx, *
+g, usr-xxx2, grp-xxx, *
+g, usr-yyy, grp-yyy, *
+&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="示例">示例&lt;/h3>
+&lt;p>TKEStack 通过自定义的 CRD：Policy 对象存储鉴权规则。其中 Policy 对象类似于 Kubernetes 中的 Clusterrole 或者 Role 对象，以近似于腾讯 CAM 语法的方式，定义了鉴权规则：
+&lt;img src="./get-policy.png" alt="image.png">&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">apiVersion&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">auth.tkestack.io/v1&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">kind&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">Policy&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">metadata&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">creationTimestamp&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;2022-01-13T07:01:07Z&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">generateName&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">pol-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">pol-2tg5rdqf&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">resourceVersion&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;916&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">uid&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">23b81f6e-ac0d-4bbc-969b-864de22f917a&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">spec&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">category&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">addon&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">description&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">该策略允许您管理平台租户内扩展组件相关资源&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">displayName&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">AddonFullAccess&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">finalizers&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#000">policy&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">scope&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">statement&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">actions&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Addon*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Addons*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Addontype*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Addontypes*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Clusteraddontype*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Clusteraddontypes*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Coredns*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Cronhpa*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Cronhpas*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Csi*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Csioperator*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Csioperators*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Csis*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Galaxies*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Galaxy*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Gpumanager*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Gpumanagers*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Logc*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Logcs*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Persistentevent*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Persistentevents*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Prometheuse*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Prometheuses*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Tappcontroller*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*Tappcontrollers*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">effect&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">allow&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">resources&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#4e9a06">&amp;#39;*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">tenantID&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">default&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">type&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">default&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">username&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">admin&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">status&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">groups&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">null&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">phase&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">Active&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">users&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">null&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Policy 对象通过 &lt;strong>spec.statement&lt;/strong> 字段定义了鉴权策略的行为（actions）和资源（resources），分为平台策略（spec.scope!=project）和业务策略（spec.scope==project）：&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">apiVersion&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">auth.tkestack.io/v1&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">kind&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">Policy&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">metadata&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">pol-prj-default&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">spec&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">category&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">common&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">description&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">demo&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">displayName&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">demo&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">finalizers&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#000">policy&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">scope&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">project&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">statement&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">actions&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#000">createDeployment&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#000">deleteDeployment&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#000">getDeployment&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#000">listDeployments&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#000">updateDeployment&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">effect&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">allow&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">resources&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#000">cluster:cls-xxxxxxx/namespace:*&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">tenantID&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">default&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">type&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">custom&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">username&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">admin&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#000">---&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">apiVersion&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">auth.tkestack.io/v1&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">kind&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">ProjectPolicyBinding&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">metadata&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">prj-fwxqdm6b-pol-prj-default&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">spec&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">finalizers&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#000">projectpolicybinding&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">groups&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">null&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">policyID&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">pol-prj-default&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">projectID&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">prj-fwxqdm6b&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">tenantID&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">default&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">users&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#204a87;font-weight:bold">id&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">usr-test-default&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">test&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Policy 对象定义了用户需要配置的鉴权规则格式，但是 Policy 对象实际上定义了一批规则的集合，Casbin 没法直接读取，因此还需要另一个 CRD 对象，将 Policy 转化为逐条的规则。例如：
+&lt;img src="./get-rule.png" alt="image.png">&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">apiVersion&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">auth.tkestack.io/v1&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">kind&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">Rule&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">metadata&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">creationTimestamp&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;2022-03-08T06:46:36Z&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">generateName&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">rul-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">rul-2rh67m4s&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">resourceVersion&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;28896514&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">uid&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">a81f4f7f-88ef-418c-bb93-1d7ccdb02349&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">spec&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">ptype&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">g&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">v0&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">default##user##test&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">v1&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">pol-default-project&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">v2&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">prj-rggwcclx&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">v3&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">v4&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">v5&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">v6&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#000">---&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">apiVersion&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">auth.tkestack.io/v1&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">kind&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">Rule&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">metadata&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">creationTimestamp&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;2022-01-13T07:01:09Z&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">generateName&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">rul-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">rul-zzslddhh&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">resourceVersion&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;1075&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">uid&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">0adb223f-6d05-4486-b714-18de368a68c6&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">spec&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">ptype&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">p&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">v0&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">pol-default-project-member&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">v1&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#39;*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">v2&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#39;*&amp;#39;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">v3&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">deleteJob&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">v4&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">allow&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">v5&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">v6&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Rule 对象可以分为两类：spec.ptype==p 和 spec.ptype==g，分别对应 Casbin 模型里的policy_defination 和 role_defination：&lt;/p>
+&lt;ul>
+&lt;li>根据 g 规则可以确定用户所在的业务以及关联的 Policy 对象&lt;/li>
+&lt;li>根据 p 规则可以确定用户关联的 Policy 规定了哪些可执行的动作&lt;/li>
+&lt;/ul>
+&lt;p>tke-auth-controller 根据 Casbin 定义的 Adapter Interface，通过 tke-auth-api 的 Client 和 Rule 对象的 Lister 对象构建了一个 Adapt。通过 Adapt 创建了 Casbin 的客户端，实现 Kubernetes 同 Casbin 框架的交互。&lt;/p>
+&lt;h3 id="其他模块的授权链路">其他模块的授权链路&lt;/h3>
+&lt;p>通过在&lt;a href="https://github.com/tkestack/tke/blob/9a001b7065aab6553d3310ddf748fb8abe9fb684/pkg/auth/handler/authz/handler.go#L62">WithTKEAuthorization&lt;/a>阶段，通过Webhook的方式，访问tke-auth-api的&lt;a href="https://github.com/tkestack/tke/blob/9a001b7065aab6553d3310ddf748fb8abe9fb684/pkg/auth/route/auth.go#L34">/authz接口&lt;/a>
+&lt;img src="./authz.png" alt="image.png">&lt;/p></description></item><item><title>Blog: 原生k8s集群上通过chart安装tke-auth、tke-platform、tke-gateway</title><link>/web/zh/blog/2022/02/23/tkestack-installer-chart/</link><pubDate>Wed, 23 Feb 2022 00:00:00 +0000</pubDate><guid>/web/zh/blog/2022/02/23/tkestack-installer-chart/</guid><description>
 &lt;p>&lt;strong>Author&lt;/strong>: wl-chen&lt;/p>
 &lt;p>&lt;a href="https://github.com/tkestack/tke">TKEStack&lt;/a> 是一个开源项目，它为在生产环境中部署容器的组织提供了一个容器管理平台。TKEStack 让您可以轻松地在任何地方运行 Kubernetes、满足 IT 需求并为 DevOps 团队赋能。
 本文将介绍如何使用 &lt;a href="https://helm.sh/zh/docs/">helm&lt;/a> 在原生 k8s 集群上，以 chart 的形式安装 TKEStack 中的核心组件 tke-auth、tke-platfor、tke-gateway，实现 TKEStack 的轻量化安装。&lt;/p>
