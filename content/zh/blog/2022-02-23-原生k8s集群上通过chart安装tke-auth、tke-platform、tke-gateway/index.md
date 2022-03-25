@@ -40,10 +40,10 @@ git clone https://github.com/tkestack/tke.git
 # 必填，etcd访问地址，形式如https://172.19.0.2:2379
 etcd:
   host: https://172.18.0.2:2379 
-# 必填，服务器ip，数组形式
+# 必填，服务器内网ip，数组形式
 serverIPs:
   - 172.18.0.2
-# 访问的域名，数组形式
+# 必填，公网可访问的ip地址以及要使用的域名，数组形式
 dnsNames:
   - tke.gateway
 # 必填，集群front-proxy-ca.crt文件地址，默认位置为/etc/kubernetes/pki/front-proxy-ca.crt
@@ -58,7 +58,7 @@ tke-auth:
     replicas: 1
     # 必填
     image: tkestack/tke-auth-api-amd64:74592a3bceb5bebca602bea21aaebf78007a3bb2
-    # 必填，数组形式，auth的重定向访问地址，包括集群服务器ip地址（必填）、tke-gateway的域名（可选）、集群高可用的VIP地址（可选）和集群的公共可访问域名（可选）
+    # 必填，数组形式，auth的重定向访问地址，包括集群服务器ip地址（必填）、tke-gateway的域名（可选）、集群高可用的VIP地址（可选，有的话需要填写）和集群的公共可访问域名（可选，，有的话需要填写）
     redirectHosts: 
       - 172.18.0.2
     enableAudit: 
@@ -172,15 +172,7 @@ chart安装完成后，可以查询到以下信息，如图所示：
 
 ## 修改集群 apiserver 配置
 
-修改 k8s 集群中`/etc/kubernetes/mainfest/kube-apiserver.yaml`的内容，在`spec.containers.command`字段增加以下两条：
-
-```yaml
-# 如果已有这两个参数，则将其按照以下内容修改
-- --authorization-mode=Node,RBAC,Webhook
-- --authorization-webhook-config-file=/etc/kubernetes/pki/tke-authz-webhook.yaml
-```
-
-在参数`authorization-webhook-config-file`对应的目录`/etc/kubernetes/pki/`下新建文件`tke-authz-webhook.yaml`，文件内容如下（其中`cluster.server`参数中的IP地址需要修改为master的IP地址）：
+在对应的目录`/etc/kubernetes/pki/`下新建文件`tke-authz-webhook.yaml`，文件内容如下（其中`cluster.server`参数中的IP地址需要修改为master的IP地址）：
 
 ```yaml
 apiVersion: v1
@@ -205,6 +197,14 @@ contexts:
 
 将二进制执行文件生成的`webhook.crt`和`webhook.key`（位置在二进制执行文件同级目录`/data`内）同时放到对应位置`/etc/kubernetes/pki/`
 
+修改 k8s 集群中`/etc/kubernetes/mainfest/kube-apiserver.yaml`的内容，在`spec.containers.command`字段增加以下两条：
+
+```yaml
+# 如果已有这两个参数，则将其按照以下内容修改
+- --authorization-mode=Node,RBAC,Webhook
+- --authorization-webhook-config-file=/etc/kubernetes/pki/tke-authz-webhook.yaml
+```
+
 ### 创建独立集群
 
 访问地址`http://{master节点ip}/tkestack`,出现如下登陆界面，输入之前设置的用户名`adminusername`和密码`adminpassword`,如无设置，默认用户名为`admin`，密码为`YWRtaW4=`。
@@ -216,6 +216,15 @@ contexts:
 <img alt="" width="100%" src="新建独立集群.png">
 
 具体的集群创建信息可参考文档[集群创建](https://tkestack.github.io/web/zh/docs/user-guide/platform-console/cluster-mgmt/#%E6%96%B0%E5%BB%BA%E7%8B%AC%E7%AB%8B%E9%9B%86%E7%BE%A4)
+
+如果在安装过程中出现没有 tke 对应版本的问题，可能是版本不兼容导致，可以通过在集群上名为 cluster-info (namespace 为 kube-public) 的 configmap 中增加如下字段解决：
+
+<img alt="" width="100%" src="find-not-k8s-valid-version.png">
+
+```yaml
+data:
+  k8sValidVersions: '["1.21.4-tke.1","1.20.4-tke.1"]'
+```
 
 创建集群完成后，可以在页面端看到如下状态
 
