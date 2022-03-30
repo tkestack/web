@@ -8,33 +8,50 @@ slug: tkestack-installer-chart
 
 **Author**: wl-chen
 
-[TKEStack](https://github.com/tkestack/tke) 是一个开源项目，它为在生产环境中部署容器的组织提供了一个容器管理平台。TKEStack 让您可以轻松地在任何地方运行 Kubernetes、满足 IT 需求并为 DevOps 团队赋能。
-本文将介绍如何使用 [helm](https://helm.sh/zh/docs/) 在原生 k8s 集群上，以 chart 的形式安装 TKEStack 中的核心组件 tke-auth、tke-platfor、tke-gateway，实现 TKEStack 的轻量化安装。 
+## 前言
+
+[TKEStack](https://github.com/tkestack/tke) 是一个开源容器管理平台，可以让您轻松地在任何地方运行 Kubernetes、满足 IT 需求并为 DevOps 团队赋能。
+
+TKEStack 提供了丰富的组件实现用户管理、访问策略管理、集群管理、业务管理、监控、日志、私有镜像库等功能，这也相应地增加了在本地安装 TKEStack 的时间。对于部分用户来说，可能只需要 TKEStack 的用户管理、集群管理、控制台访问等核心功能，但也要付出一样的时间成本。另外，TKEStack 安装的时候会部署 global 集群，并通过 global 集群管理独立集群和导入集群的生命周期，但不支持用户在已有的 k8s 集群上安装集成 TKEStack。
+
+基于上述背景，TKEStack 在最新的 v1.9.0 release 中，支持了轻量化安装场景。用户可以实现在已有的 k8s 集群上集成 TKESatck 的用户管理、集群管理、控制台访问等核心功能。
 
 ## 前置要求
 
-本文介绍的内容是建立在已经有一个正常运行的 k8s 集群的基础上，并且下面的操作需要在 master 节点上进行操作。如果没有现有的 k8s 集群，可以通过 kind 创建本地集群并进行下面的操作。
-本文介绍的内容需要通过 helm 安装一些实验用途的组件，可参考[安装Helm](https://helm.sh/zh/docs/intro/install/)进行安装。
+- 本文介绍的内容是建立在已有一个正常运行的 k8s 集群的基础上，并且以下的操作需要在 master 节点上进行。如果没有 k8s 集群，可以通过 [kind](https://kind.sigs.k8s.io/docs/user/quick-start/) 创建本地集群并进行以下的操作。
+- 本文介绍的内容需要通过 [helm](https://helm.sh/zh/docs/) 安装 TKEStack 的核心组件，可参考 [安装手册](https://helm.sh/zh/docs/intro/install/) 安装 helm。
 
-## 创建指定 namespace
+## 轻量化安装 TKEStack
 
-tke-auth、tke-platform、tke-gateway 三个 chart 需要运行在指定的 namespace 下，执行如下命令：
+### 1、准备安装文件
 
-```sh
-kubectl create namespace tke
-```
-
-## 安装 chart
-
-本文提供了二进制可执行程序来生成 tke-auth、tke-platform、tke-gateway 三个 chart 的 values 文件
-
-执行如下命令拉取 TKEStack 项目代码
+通过如下命令拉取 TKEStack 的最新代码：
 
 ```sh
 git clone https://github.com/tkestack/tke.git
 ```
 
-在 TKEStack 项目的`charts/bin`目录放置了可执行文件`bin`和需要填写的yaml文件`customConfig.yaml`。`customConfig.yaml`文件中一些注释“必填”的参数，需要填写，其余的参数可根据需要选填，选填部分为空时会自动填充默认值。`customConfig.yaml`内容如下：
+### 2、创建本地集群（已有本地集群的可跳过该步骤）
+
+如果用户本地没有 k8s 集群，可通过 kind 进行创建。由于 kind 创建的集群实际运行在镜像容器中，为了确保 TKEStack 核心组件的端口能够从容器外部正常访问，切换到 TKEStack 代码下的 `charts/` 目录，执行如下命令创建集群：
+
+```sh
+kind create cluster --config bin/kindConfig.yaml --name {your cluster name} 
+```
+
+### 3、创建指定 namespace
+
+tke-auth、tke-platform、tke-gateway 三个核心组件需要运行在指定的 namespace 下，执行如下命令：
+
+```sh
+kubectl create namespace tke
+```
+
+### 4、安装 chart
+
+TKEStack 提供了 chart 文件来安装 tke-auth、tke-platform、tke-gateway 三个核心组件。
+
+在 TKEStack 代码的 `charts/bin` 目录放置了可执行文件 `gen` 和需要填写的 yaml 文件 `customConfig.yaml`。`customConfig.yaml` 文件中一些注释“必填”的参数，需要填写，其余的参数可根据需要选填，选填部分为空时会自动填充默认值。`customConfig.yaml` 内容如下：
 
 ```yaml
 # 必填，etcd访问地址，形式如https://172.19.0.2:2379
@@ -138,9 +155,15 @@ tke-gateway:
 
 ```
 
-`customConfig.yaml`文件中的参数填写完毕后，执行`bin`,会在同级目录生成`auth-chart-values.yaml`、`platform-chart-values.yaml`、`gateway-chart-values.yaml`三个yaml文件，分别对应三个chart（tke-auth、tke-platform、tke-gateway）在安装时需要的`values.yaml`文件
+`customConfig.yaml` 文件中的参数填写完毕后，切换到 TKEStack 代码的 `charts/bin` 目录下执行 `gen`：
 
-切换到项目的`charts/`目录，接下来进行chart的安装：
+```sh
+./gen
+```
+
+会在同级目录生成 `auth-chart-values.yaml`、`platform-chart-values.yaml`、`gateway-chart-values.yaml` 三个yaml文件，分别对应三个chart（tke-auth、tke-platform、tke-gateway）在安装时需要的 `values.yaml` 文件
+
+切换到 TKEStack 的 `charts/` 目录，接下来进行三个核心组件的安装：
 
 ```sh
 # tke-auth的安装
@@ -157,22 +180,19 @@ helm install -f bin/platform-chart-values.yaml tke-platform tke-platform/
 helm install -f bin/gateway-chart-values.yaml tke-gateway tke-gateway/
 ```
 
-通过如下命令如果能查询到三个组件对应的 `api-resources`，则表示`chart`安装成功
+通过如下命令如果能查询到三个 chart 的安装状态均为 `deployed`，则表示核心组件安装成功：
 
 ```sh
-kubectl api-resources | grep tke
+helm list
 ```
 
 chart安装完成后，可以查询到以下信息，如图所示：
-<img alt="" width="100%" src="auth-api-resources.png">
 
-<img alt="" width="100%" src="platform-api-resources.png">
+<img alt="" width="100%" src="get-svc.png">
 
-<img alt="" width="100%" src="svc.png">
+### 5、修改集群 apiserver 配置
 
-## 修改集群 apiserver 配置
-
-在对应的目录`/etc/kubernetes/pki/`下新建文件`tke-authz-webhook.yaml`，文件内容如下（其中`cluster.server`参数中的IP地址需要修改为master的IP地址）：
+在集群对应的目录 `/etc/kubernetes/pki/` 下新建文件 `tke-authz-webhook.yaml`，文件内容如下（其中 `cluster.server` 参数中的IP地址需要修改为master的IP地址）：
 
 ```yaml
 apiVersion: v1
@@ -195,9 +215,9 @@ contexts:
   name: tke
 ```
 
-将二进制执行文件生成的`webhook.crt`和`webhook.key`（位置在二进制执行文件同级目录`/data`内）同时放到对应位置`/etc/kubernetes/pki/`
+将二进制执行文件 `gen` 生成的 `webhook.crt` 和 `webhook.key`（位置在 TKEStack 代码下的 `charts/bin/data/` 目录）复制到集群的对应目录 `/etc/kubernetes/pki/`下
 
-修改 k8s 集群中`/etc/kubernetes/mainfest/kube-apiserver.yaml`的内容，在`spec.containers.command`字段增加以下两条：
+修改 k8s 集群中 `/etc/kubernetes/mainfest/kube-apiserver.yaml` 的内容，在 `spec.containers.command` 字段增加以下两个参数：
 
 ```yaml
 # 如果已有这两个参数，则将其按照以下内容修改
@@ -205,31 +225,33 @@ contexts:
 - --authorization-webhook-config-file=/etc/kubernetes/pki/tke-authz-webhook.yaml
 ```
 
-### 创建独立集群
+### 6、创建独立集群
 
-访问地址`http://{master节点ip}/tkestack`,出现如下登陆界面，输入之前设置的用户名`adminusername`和密码`adminpassword`,如无设置，默认用户名为`admin`，密码为`YWRtaW4=`。
+访问地址 `http://{公网可访问ip}/tkestack`，出现如下登陆界面，输入之前设置的用户名 `adminusername` 和密码 `adminpassword`，如无设置，默认用户名为 `admin` ，密码为 `YWRtaW4=`。
 
-<img alt="" width="100%" src="登陆界面.png">
+<img alt="" width="100%" src="login-pic.png">
 
 登陆后，点击集群管理的新建独立集群：
 
 <img alt="" width="100%" src="新建独立集群.png">
 
-具体的集群创建信息可参考文档[集群创建](https://tkestack.github.io/web/zh/docs/user-guide/platform-console/cluster-mgmt/#%E6%96%B0%E5%BB%BA%E7%8B%AC%E7%AB%8B%E9%9B%86%E7%BE%A4)
+具体的集群创建信息可参考文档[集群创建](https://tkestack.github.io/web/zh/docs/user-guide/platform-console/cluster-mgmt/#%E6%96%B0%E5%BB%BA%E7%8B%AC%E7%AB%8B%E9%9B%86%E7%BE%A4)。
 
-如果在安装过程中出现没有 tke 对应版本的问题，可能是版本不兼容导致，可以通过在集群上名为 cluster-info (namespace 为 kube-public) 的 configmap 中增加如下字段解决：
-
-<img alt="" width="100%" src="find-not-k8s-valid-version.png">
-
-```yaml
-data:
-  k8sValidVersions: '["1.21.4-tke.1","1.20.4-tke.1"]'
-```
-
-创建集群完成后，可以在页面端看到如下状态
+创建集群完成后，可以在页面端看到如下状态：
 
 <img alt="" width="100%" src="新建独立集群-成功.png">
 
-并且在创建集群的master节点上可以查询到相关集群信息
+并且可以在 master 节点上查询到独立集群的信息：
 
-<img alt="" width="100%" src="cluster信息.png">
+<img alt="" width="100%" src="get-cls.png">
+
+如果在创建独立集群时，Kubernetes 版本显示暂无数据，可以通过在名为 cluster-info (namespace 为 kube-public) 的 configmap 中增加如下字段解决：
+
+```sh
+data:
+  k8sValidVersions: '["1.21.4-tke.2","1.20.4-tke.2"]'
+```
+
+## 总结
+
+- 本文介绍了如何基于 TKEStack 最新的 v1.9.0 release 版本在现有的 k8s 集群上轻量化安装 TKEStack，并以此在现有集群上集成 TKEStack 的用户管理、集群管理、控制台访问等核心功能。
