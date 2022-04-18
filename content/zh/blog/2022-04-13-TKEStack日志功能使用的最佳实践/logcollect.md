@@ -73,3 +73,4 @@ TKESTack 提供的集群内日志采集功能，支持将集群内服务或集�
           value: "test@123"
   2. Kinada中index pattern推荐设为*，以自动匹配所有Elasticsearch中的indices,如下图所示
   ![Kinada设置index pattern](pattern.png)
+  > 参考： https://www.elastic.co/guide/cn/kibana/current/docker.html
