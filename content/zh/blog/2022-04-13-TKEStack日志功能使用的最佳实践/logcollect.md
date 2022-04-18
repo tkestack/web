@@ -63,15 +63,19 @@ TKESTack 提供的集群内日志采集功能，支持将集群内服务或集�
 
 ## Elasticsearch对接Kinada
   
-  1. Kinada的deployment中配置Elasticsearch服务地址的环境变量，及访问Elasticsearch服务的用户名密码(kibana7.0.0及以上版本)
+  1. Kibana的deployment中配置Elasticsearch服务地址的环境变量，及访问Elasticsearch服务的用户名密码(kibana7.0.0及以上版本)
   > env:
-        - name: "ELASTICSEARCH_HOSTS"
-          value: "http://192.168.0.73:9200"
-        - name: "ELASTICSEARCH_USERNAME"
-          value: "kibana"
-        - name: "ELASTICSEARCH_PASSWORD"
-          value: "test@123"
-  > kibana 7.0.0以下版本elasticsearch地址配置成ELASTICSEARCH_URL
-  2. Kinada中index pattern推荐设为*，以自动匹配所有Elasticsearch中的indices,如下图所示
+  >     - name: "ELASTICSEARCH_HOSTS"
+  >       value: "http://192.168.0.73:9200"
+  >     - name: "ELASTICSEARCH_USERNAME"
+  >       value: "kibana"
+  >     - name: "ELASTICSEARCH_PASSWORD"
+  >       value: "test@123"
+  > Kibana 7.0.0以下版本elasticsearch地址配置成ELASTICSEARCH_URL
+
+  2. Kibana中index pattern推荐设为*，以自动匹配所有Elasticsearch中的indices,如下图所示
   ![Kinada设置index pattern](pattern.png)
   > 参考： https://www.elastic.co/guide/cn/kibana/current/docker.html
+
+  3. Kibana中根据索引查看数据
+  ![Kinada查看数据](search_data.png)
